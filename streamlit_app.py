@@ -3,7 +3,7 @@ import hashlib,os,sys,tempfile,runpy
 from pathlib import Path
 from zipfile import ZipFile
 src=Path(__file__).resolve().parent/'source.zip'
-sha='ecac285de2972ce7aedd208ad47e657a6d98be390decc8a48dbb2ca7c0ee4ba7'
+sha='f48b8150ae84fad67a3031a62fa40526b6c8f65ce7b162ba0835f2c5b560a0fc'
 base=Path(tempfile.gettempdir())/('xuheng-source-'+sha)
 if not base.is_dir():
     if hashlib.sha256(src.read_bytes()).hexdigest()!=sha:raise RuntimeError('代码包校验失败')
