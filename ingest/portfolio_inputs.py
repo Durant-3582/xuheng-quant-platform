@@ -137,7 +137,7 @@ def bench_build(store, day, base, output):
                                market=prices.tolist(),parts=parts,annual=annual),hashes)
 
 
-def value_build(store, day, base, output):
+def value_build(store, day, base, output, *, previous=None):
     dates, codes = base["dates"], base["codes"]
     scores = np.load(output/"signal-factors.npy",mmap_mode="r")
     if scores.shape!=(3,len(codes),len(dates)):
@@ -148,17 +148,39 @@ def value_build(store, day, base, output):
     months,_ = calendar_groups(dates)
     hashes, parts, annual, year_rows = {}, {}, {}, {}
     first, last, observations = None, None, 0
+    old_parts = {}
+    remap = None
+    if previous:
+        old_dir = store / "research" / previous
+        old_parts = sync.read(old_dir / "value-index.gz")["parts"]
+        old_codes = sync.read(old_dir / "days-index.gz")["codes"]
+        if old_codes != codes:
+            remap = [ids[code] for code in old_codes]
     for d in dates:
+        if previous and d < previous:
+            continue
         if not (store/"pb"/(d+".gz")).is_file():
             raise ValueError("缺少历史 PB "+d+"，请先补齐每日指标。")
     for ym,ticks in months.items():
         rows = {}
+        prior_rows = sync.read(store / (old_parts[ym] + ".gz")) if ym in old_parts else {}
         for t in ticks:
             counts = [0,0,0]
             if t==0:
                 rows[dates[t]] = [counts,[],[],[],[]]
                 continue
             signal = dates[t-1]
+            if previous and dates[t] <= previous:
+                result = prior_rows[dates[t]]
+                if remap is not None:
+                    result = [result[0], *[[[remap[i], v] for i, v in rank] for rank in result[1:]]]
+                count = sum(result[0])
+                if count:
+                    first = first or signal
+                    last = signal
+                observations += count
+                rows[dates[t]] = result
+                continue
             v = sync.read(store/"pb"/(signal+".gz"))
             if not v:
                 raise ValueError("缺历史 PB "+signal)
