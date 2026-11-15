@@ -1,10 +1,13 @@
 """Regression checks for disclosure vintages, ties, missing data and industry trade timing."""
 from pathlib import Path
 import io
+import json
 import sys
+import tempfile
 import unittest
 from datetime import date, timedelta
-from unittest.mock import patch
+from types import SimpleNamespace
+from unittest.mock import Mock, patch
 
 import numpy as np
 
@@ -20,6 +23,59 @@ from study_sources import report_pages
 
 
 class ResearchTests(unittest.TestCase):
+    def test_same_day_research_correction(self):
+        from xuheng import study_store
+        store = SimpleNamespace(day='20261113', remote=True, manifest={})
+        def pointer(day, digest):
+            return {'format':1, 'day':day, 'files':{'panel/2026':digest * 64}}
+        seed, fixed = pointer(store.day,'a'), pointer(store.day,'b')
+        with tempfile.TemporaryDirectory() as tmp:
+            baseline = Path(tmp) / 'static/study-release.json'
+            baseline.parent.mkdir()
+            baseline.write_text(json.dumps(seed))
+            response = Mock()
+            response.json.side_effect = [fixed, pointer('20261112','c')]
+            with patch.object(study_store,'ROOT',Path(tmp)), patch.object(study_store,'_checked',{}), \
+                    patch.object(study_store.requests,'get',return_value=response) as get, \
+                    patch.object(study_store.time,'monotonic',side_effect=[1,2,3,200,201]):
+                self.assertEqual(study_store.edition(store,refresh=False),seed)
+                get.assert_not_called()
+                self.assertEqual(study_store.edition(store),fixed)
+                self.assertEqual(study_store.factor_snapshot(store),(store.day,tuple(fixed['files'].items())))
+                self.assertEqual(study_store.edition(store),fixed)
+                self.assertEqual(study_store.edition(store,refresh=False),fixed)
+                self.assertEqual(get.call_count,2)
+            store.day = '20261116'
+            response.json.side_effect = [pointer(store.day,'c')]
+            with patch.object(study_store,'ROOT',Path(tmp)), patch.object(study_store,'_checked',{}), \
+                    patch.object(study_store.requests,'get',return_value=response):
+                self.assertEqual(study_store.edition(store,refresh=False)['day'],store.day)
+
+    def test_multifactor_cache_and_locked_research_version(self):
+        from xuheng import desk_api, portfolio
+        class Store:
+            release_id = 'same-market'
+        store = Store()
+        a = ('20261113',(('panel/2026','a'*64),))
+        b = ('20261113',(('panel/2026','b'*64),))
+        raw = dict(model='multi',count=10,fee=10,interval=1,weighting='equal',bench='000300.SH',
+                   factorWeights={'mom':100})
+        rule = parse_rules(raw)
+        with patch.object(portfolio,'factor_snapshot',side_effect=[a,a,b]), \
+                patch.object(portfolio,'_compute',side_effect=[{'id':1},{'id':2}]) as calc:
+            self.assertEqual([portfolio.run(store,rule,'20250101','20251031')['id'] for _ in range(3)],[1,1,2])
+            self.assertEqual(calc.call_count,2)
+        key = b'test-only'
+        # A non-multifactor winner remains bound to the input shared by all candidates.
+        signed = {'rules':{**raw,'model':'mom'}, 'factorSnapshot':desk_api.snapshot_digest(a)}
+        winner = desk_api.seal(signed,'winner',store.release_id,key)
+        with patch.object(desk_api,'factor_snapshot',return_value=a):
+            locked = desk_api.portfolio(store,{'action':'lock','token':winner},key)['token']
+        with patch.object(desk_api,'factor_snapshot',return_value=b):
+            for action, token in [('lock',winner),('test',locked),('review',locked)]:
+                with self.assertRaisesRegex(desk_api.SnapshotChanged,'多因子研究数据已更新'):
+                    desk_api.portfolio(store,{'action':action,'token':token},key)
+
     def test_covariance_cash_and_insufficient_history(self):
         x=np.linspace(-.01,.01,120)
         r=np.column_stack([x,-.5*x])
