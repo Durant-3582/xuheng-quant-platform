@@ -8,6 +8,7 @@ import threading
 import time
 from zoneinfo import ZoneInfo
 
+from .assistant_access import gate
 from .assistant_clients import ServiceError, TushareMCP, deepseek
 from .assistant_tools import TOOLS, execute
 
@@ -105,16 +106,19 @@ def request_answer(question, history, store, client, model):
     raise ServiceError("未能形成完整的研究回答，请重试。")
 
 
-def handle(store, body, state, key, token, model=None, client_factory=TushareMCP):
+def handle(store, body, state, key, token, model=None, client_factory=TushareMCP, *, password=""):
     if not isinstance(body, dict):
         raise ValueError("问答请求格式无效。")
+    locked = gate(state, body, password)
+    if locked is not None:
+        return locked
     action = body.get("action")
     turns = state.setdefault("turns", [])
-    if action == "history":
-        return {"turns": turns, "ready": bool(key and token)}
+    if action in ("history", "unlock"):
+        return {"access": "unlocked", "turns": turns, "ready": bool(key and token)}
     if action == "clear":
         state["turns"] = []
-        return {"turns": []}
+        return {"access": "unlocked", "turns": []}
     identifier, question = body.get("turnId"), body.get("question")
     if (action != "ask" or not isinstance(identifier, str) or not re.fullmatch(r"[a-zA-Z0-9-]{12,64}", identifier)
             or not isinstance(question, str) or not 1 <= len(question.strip()) <= 900):
@@ -123,7 +127,7 @@ def handle(store, body, state, key, token, model=None, client_factory=TushareMCP
         if turn["id"] == identifier:
             if question.strip() != turn["question"]:
                 raise ValueError("问题已变更，请重新发送。")
-            return {"turn": turn}
+            return {"access": "unlocked", "turn": turn}
     if not key or not token:
         raise ServiceError("网站需要同时配置 DeepSeek API 密钥和 Tushare Token 才能发送研究问题。")
     with allowance(state):
@@ -135,4 +139,4 @@ def handle(store, body, state, key, token, model=None, client_factory=TushareMCP
             client.close()
     turn = {"id": identifier, "question": question.strip(), "answer": answer, "evidence": evidence}
     state["turns"] = [*turns[-11:], turn]
-    return {"turn": turn}
+    return {"access": "unlocked", "turn": turn}
