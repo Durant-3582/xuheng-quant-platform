@@ -1,6 +1,6 @@
 import {navigate} from "./navigation.js";
 import {livePanel} from "./live.js";
-import {esc,fmt,pct,signed,date,title,box,metric,note,empty,table,pager,focusTable,select,line,draw,api,DataDateError,requireDay,offerRefresh,series,adjusted,compare,rank} from "./lab.js";
+import {esc,fmt,pct,signed,date,title,box,metric,note,empty,table,pager,focusTable,select,line,draw,api,DataDateError,requireDay,offerRefresh,series,adjusted,compare} from "./lab.js";
 import {portfolioStudy,remember} from "./portfolio.js";
 import {backtest} from "./backtest.js";
 import {rangeControl,bindRange} from "./ranges.js";
@@ -9,6 +9,7 @@ import {rollingBeta} from "./beta.js";
 import {stockWindows} from "./diagnosis.js";
 import {renderDiagnosis} from "./diagnosis-view.js";
 import {newsPage} from "./news.js";
+import {factorTabs, setSingleTest, financialReports, financeLink, financialScreen, showReportsOnArrival, multiPage, testPage, rotationPage} from "./studies.js";
 const $=id=>document.getElementById(id),P=$("panel");
 const sections=[["overview","市场总览","M3 12h4l3-6 4 12 3-7h4"],["news","新闻情绪","M4 4h16v16H4z M7 8h10 M7 12h4 M13 12h4 M7 16h10"],["indices","指数中心","M3 18h18M4 14l5-5 4 2 7-7"],["stocks","个股研究","M4 17h16M8 4v9m8-6v8M6 7h4m4 3h4"],["factors","因子选股","M3 5h18M6 11h12M9 17h6"],["backtest","策略回测","M4 18V5m0 13h17M7 14l4-5 4 2 5-7"],["portfolio","组合表现","M11 3a9 9 0 1 0 10 10H11Zm3 0v7h7a8 8 0 0 0-7-7z"]];
 const benchmarks=["000001.SH","399001.SZ","000300.SH","000905.SH","000852.SH","399006.SZ","899050.BJ"];
@@ -103,13 +104,16 @@ async function loadFactors(ticket){
  requireDay(result.day,app.day);if(result.factors)requireDay(result.factors.day,app.day);
  if(result.factors)app.factors=result.factors;
 }
+function studyEnv(ticket){return {panel:P,day:app.day,current:()=>ticket===version,symbol:symbolLink,chart,legend};}
 function route(){
  if(!app)return;killGraphs.forEach(f=>f());killGraphs.clear();const [tab,c=""]=location.hash.slice(1).split("/");pageName=sections.some(s=>s[0]===tab)?tab:"overview";
  try{routeCode=decodeURIComponent(c);}catch{routeCode="无效代码";}
- if(pageName==="stocks"||pageName==="indices"){
+ if((pageName==="stocks"&&routeCode!=="screen")||pageName==="indices"){
    routeCode=routeCode.trim().toUpperCase();routeCode=aliases[routeCode]||routeCode;
  }
- const ticket=++version;document.querySelectorAll("nav a").forEach(a=>{a.classList.toggle("active",a.dataset.id===pageName);if(a.dataset.id===pageName)a.setAttribute("aria-current","page");else a.removeAttribute("aria-current");});
+ const ticket=++version;document.querySelectorAll("#navigation a").forEach(a=>{a.classList.toggle("active",a.dataset.id===pageName);if(a.dataset.id===pageName)a.setAttribute("aria-current","page");else a.removeAttribute("aria-current");});
+ const study=({"overview/rotation":rotationPage,"stocks/screen":financialScreen,"factors/multi":multiPage,"factors/test":testPage})[pageName+"/"+routeCode];
+ if(study){study(studyEnv(ticket));return;}
  if(pageName==="news")killGraphs.set("news",newsPage({panel:P,wireInput,name,isCurrent:()=>ticket===version}));
  if(pageName==="overview")overview(ticket);if(pageName==="stocks"||pageName==="indices")security(ticket);if(pageName==="factors"){
   const render=()=>{if(ticket===version)factors();};
@@ -126,7 +130,7 @@ function route(){
 }
 async function boot(ready){
  $("method").disabled=true;
- try{app=await api("/api/workspace");items=app.rows;aliases=app.aliases||{};aliasRows=Object.entries(aliases);byCode=new Map(items.map(r=>[r[0],r]));$("stamp").textContent=date(app.day)+" · 盘后";$("documentation").innerHTML="<p>数据来自 Tushare Pro，日线查询从 2000 年起，按证券的存续期与实际返回日期展示。股票单位为元，指数单位为点。成交额采用接口的千元口径。</p><p>股票价格表显示不复权价格，动量及波动率使用收盘价与当日除权参考前收盘的比值。无收盘、无当日报价和无接口权限分别标示。对跨市场、债券等已识别系列做排除，未核实成分范围的指数单列。</p><p>市场涨跌按有报价的股票计算。行业采用股票目录当前分类，供本期横截面比较。历史选股按信号日实际有行情的证券构建。策略回测和组合表现按开盘成交限制、成交额和所选费率记账；指数用于策略比较或 Beta 估计时，从发布日期起使用。</p>";
+ try{app=await api("/api/workspace");items=app.rows;aliases=app.aliases||{};aliasRows=Object.entries(aliases);byCode=new Map(items.map(r=>[r[0],r]));$("stamp").textContent=date(app.day)+" · 盘后";$("documentation").innerHTML="<p>股票、财报及市场指数来自 Tushare Pro。行业轮动使用申万宏源研究所发布的 31 个一级行业价格指数。日线查询从 2000 年起，按证券的存续期与实际返回日期展示。股票单位为元，指数单位为点。成交额采用接口的千元口径。</p><p>股票价格表显示不复权价格，动量及波动率使用收盘价与当日除权参考前收盘的比值。无收盘、无当日报价和无接口权限分别标示。对跨市场、债券等已识别系列做排除，未核实成分范围的指数单列。</p><p>市场涨跌按有报价的股票计算。当日行业涨跌采用股票目录当前分类。行业轮动使用申万 2021 版一级行业分类。历史选股按信号日实际有行情的证券构建。策略回测和组合表现按开盘成交限制、成交额和所选费率记账；指数用于策略比较或 Beta 估计时，从发布日期起使用。</p>";
  if(app.sample)$("stamp").textContent+=" · 验收样本";
  route();$("method").disabled=false;ready?.();}catch(e){blank(e,ready);}
 }
@@ -137,7 +141,7 @@ async function overview(ticket){
  const sorted=Array.from(groups,([n,[s,c]])=>[n,s/c,c]).sort((a,b)=>b[1]-a[1]);
  const bars=quoted.filter(r=>!industry||r[4]===industry).sort((a,b)=>(b[10]??-Infinity)-(a[10]??-Infinity)).slice(0,10);
  const tiles=[...sorted.slice(0,3),...sorted.slice(-3).reverse()];
- P.innerHTML=title("市场总览",date(app.day)+" 收盘 · 沪、深、北三地 A 股")+ '<div class="metrics">'+metric("当日有报价",fmt(quoted.length,0),"只股票")+metric("上涨家数",fmt(up,0),"较参考前收盘")+metric("下跌家数",fmt(down,0),"平盘 "+flat+" 只")+metric("成交额",fmt(turn,2),"万亿元")+'</div><div class="two">'+box("主要指数走势",'<div class="controls">'+opt("main-index","指数",benchOpts(),overviewBench)+rangeControl("overview-range","行情区间",[[60,"近 60 日"],[126,"近半年"],[252,"近 1 年"],[0,"全部历史"]],overviewRange)+'</div>'+line("ov-chart"),'<a class="link-btn" href="#indices/'+overviewBench+'">查看指数 →</a>')+box("指数收盘",table(["指数","收盘","日涨跌"],benchmarks.filter(c=>byCode.has(c)).map(c=>{const r=byCode.get(c);return [sym(r),fmt(r[9]),signed(r[10])];})))+'</div><div class="two even">'+box("行业表现",'<div class="thematic">'+tiles.map(([n,v,k])=>'<button data-sector="'+esc(n)+'" data-sign="'+(v>0?"up":"down")+'"><b>'+esc(n)+'</b>'+signed(v)+' <small>'+k+' 只</small></button>').join("")+'</div>'+note("按行业内有报价股票的涨跌幅等权平均，显示领涨与领跌行业。"))+box("市场宽度",'<div class="meter">'+[[up,"gainers"],[flat,"flats"],[down,"fallers"]].map(([n,c])=>'<i style="width:'+100*n/Math.max(quoted.length,1)+'%" class="'+c+'"></i>').join("")+'</div>'+table(["市场","上涨","平盘","下跌"],["SSE","SZSE","BSE"].map(v=>{const g=quoted.filter(r=>r[3]===v);return [venues[v],fmt(g.filter(r=>r[10]>0).length,0),fmt(g.filter(r=>r[10]===0).length,0),fmt(g.filter(r=>r[10]<0).length,0)];})))+'</div>'+box(industry?industry+" · 当日涨幅":"当日涨幅",table(["股票","行业","收盘","日涨跌"],bars.map(r=>[sym(r),esc(r[4]),fmt(r[9]),signed(r[10])])),industry?'<button id="clear-sector" class="quiet">全部行业</button>':"")+coverage();
+ P.innerHTML=title("市场总览",date(app.day)+" 收盘 · 沪、深、北三地 A 股")+ '<div class="metrics">'+metric("当日有报价",fmt(quoted.length,0),"只股票")+metric("上涨家数",fmt(up,0),"较参考前收盘")+metric("下跌家数",fmt(down,0),"平盘 "+flat+" 只")+metric("成交额",fmt(turn,2),"万亿元")+'</div><div class="two">'+box("主要指数走势",'<div class="controls">'+opt("main-index","指数",benchOpts(),overviewBench)+rangeControl("overview-range","行情区间",[[60,"近 60 日"],[126,"近半年"],[252,"近 1 年"],[0,"全部历史"]],overviewRange)+'</div>'+line("ov-chart"),'<a class="link-btn" href="#indices/'+overviewBench+'">查看指数 →</a>')+box("指数收盘",table(["指数","收盘","日涨跌"],benchmarks.filter(c=>byCode.has(c)).map(c=>{const r=byCode.get(c);return [sym(r),fmt(r[9]),signed(r[10])];})))+'</div><div class="two even">'+box("行业表现",'<div class="thematic">'+tiles.map(([n,v,k])=>'<button data-sector="'+esc(n)+'" data-sign="'+(v>0?"up":"down")+'"><b>'+esc(n)+'</b>'+signed(v)+' <small>'+k+' 只</small></button>').join("")+'</div>'+note("按行业内有报价股票的涨跌幅等权平均，显示领涨与领跌行业。"),'<a class="link-btn" href="#overview/rotation">查看行业轮动 →</a>')+box("市场宽度",'<div class="meter">'+[[up,"gainers"],[flat,"flats"],[down,"fallers"]].map(([n,c])=>'<i style="width:'+100*n/Math.max(quoted.length,1)+'%" class="'+c+'"></i>').join("")+'</div>'+table(["市场","上涨","平盘","下跌"],["SSE","SZSE","BSE"].map(v=>{const g=quoted.filter(r=>r[3]===v);return [venues[v],fmt(g.filter(r=>r[10]>0).length,0),fmt(g.filter(r=>r[10]===0).length,0),fmt(g.filter(r=>r[10]<0).length,0)];})))+'</div>'+box(industry?industry+" · 当日涨幅":"当日涨幅",table(["股票","行业","收盘","日涨跌"],bars.map(r=>[sym(r),esc(r[4]),fmt(r[9]),signed(r[10])])),industry?'<button id="clear-sector" class="quiet">全部行业</button>':"")+coverage();
  bindRange("overview-range",overviewRange,route);
  $("main-index").onchange=e=>{overviewBench=e.target.value;redrawAt(route,"main-index");};document.querySelectorAll("[data-sector]").forEach(b=>b.onclick=()=>{industry=b.dataset.sector;route();document.querySelector("#clear-sector")?.scrollIntoView({block:"nearest"});});if($("clear-sector"))$("clear-sector").onclick=()=>{industry="";route();};
  try{const data=await series(overviewBench,app.day);if(ticket===version)chart("ov-chart",[{name:name(overviewBench),data:(overviewRange.days?data.bars.slice(-overviewRange.days):data.bars).map(b=>[dayKey(b.day),b.close])}]);}catch(e){if(ticket===version)retryIn($("ov-chart").parentElement,e,route,"retry-overview");}
@@ -164,7 +168,7 @@ async function security(ticket){
    html+=box("120 日滚动 Beta",'<div id="stock-beta">'+empty("正在计算 Beta…")+'</div>'+note("图表使用「个股诊断」选定的市场基准，沿用上方行情区间。每个点使用 120 对同日收益，跳过停牌及跨日复牌收益。"));
  }
  html+=box("历史记录",'<div id="bar-table">'+empty("读取日线…")+'</div>','<button class="quiet" id="download" disabled>导出 CSV</button>');
- html+=box(isIndex?"历史成分与权重":"财务披露",'<div class="controls">'+(isIndex?'<label>截至日期 <input id="member-date" type="date" min="2000-01-01" value="'+date(app.day)+'" max="'+date(app.day)+'"></label>':'')+'<button id="extra-data" class="quiet">'+(isIndex?'查询最近一期成分':'查看财报指标')+'</button></div><div id="extra-result"></div>');
+ html+=box(isIndex?"历史成分与权重":"财务披露",'<div class="controls">'+(isIndex?'<label>截至日期 <input id="member-date" type="date" min="2000-01-01" value="'+date(app.day)+'" max="'+date(app.day)+'"></label>':'')+'<button id="extra-data" class="quiet">'+(isIndex?'查询最近一期成分':'查看财报指标')+'</button></div><div id="extra-result"></div>',isIndex?"":financeLink(code));
  if(isIndex)html+=box("指数目录",'<div class="controls"><label>搜索 <input id="index-find" value="'+esc(indexFilter)+'" placeholder="代码、名称或类别"></label>'+opt("scope","范围",[["","全部目录"],["benchmark","基准 / 已核"],["equity","境内股票指数"],["industry","行业系列"],["review","范围待核"]],indexScope)+'</div><div id="listing"></div>');
  P.innerHTML=html;livePanel(P,code);wireInput("quick",kind,c=>navigate(pageName+"/"+c));bindRange("range",range,()=>{detailPage=0;route();});
  let history,comparisonVersion=0;
@@ -179,6 +183,7 @@ async function security(ticket){
  $("extra-data").onclick=async()=>{
  const button=$("extra-data"),dst=$("extra-result"),revision=++extraRevision;
  const current=()=>ticket===version&&revision===extraRevision;
+ if(!isIndex&&!app.sample){await financialReports(studyEnv(ticket),code,dst,button);return;}
  if(isIndex&&(!$("member-date").value||!$("member-date").validity.valid)){
   dst.innerHTML=empty("请选择 2000 年起至数据截止日之间的有效日期。");return;
  }
@@ -196,6 +201,11 @@ async function security(ticket){
   else dst.innerHTML=res.items.length?table(["报告期","公告日","每股收益","净资产收益率","毛利率","资产负债率"],res.items.map(r=>[date(r[0]),date(r[1]),fmt(r[2]),pct(r[3]),pct(r[4]),pct(r[5])])):empty("近三年未返回财报指标。");
  }catch(e){if(current()){dst.innerHTML=notice(e);offerRefresh(dst,e,()=>boot());}}finally{if(current())button.disabled=false;}
  };
+ if(!isIndex&&showReportsOnArrival(code)){
+   const disclosure=$("extra-data");
+   disclosure.click();
+   requestAnimationFrame(()=>{if(disclosure.isConnected)disclosure.closest("section").scrollIntoView({block:"start"});});
+ }
  if(isIndex){
  $("second").onchange=e=>{secondBench=e.target.value;redrawAt(route,"second");};const drawList=()=>{$("listing").innerHTML=indexDirectory();bindPager("catalog",drawList,d=>indPage+=d);};drawList();
  $("index-find").oninput=e=>{indexFilter=e.target.value;indPage=0;drawList();};$("scope").onchange=e=>{indexScope=e.target.value;indPage=0;drawList();};
@@ -257,7 +267,7 @@ function factors(){
  const facs=[["mom","60 日动量"],["vol","20 日低波动"],["pe","低市盈率"],["pb","低市净率"],["turn","换手率"]];
  const factorHeading={mom:"60 日动量",vol:"年化波动率",pe:"市盈率（倍）",pb:"市净率（倍）",turn:"换手率"}[factorKey];
  const size=20;factorPage=Math.min(factorPage,Math.max(0,Math.ceil(rows.length/size)-1));
- P.innerHTML=title("因子选股","在当期有报价的 A 股中，按明确的规则筛选和排序。")+box("筛选条件",'<div class="controls">'+opt("factor","排序因子",facs,factorKey)+opt("venue","市场",[["","全 A 股"],["SH","沪市"],["SZ","深市"],["BJ","北交所"]],factorVenue)+opt("sector","行业",[["","全部行业"],...Array.from(new Set(allStocks().map(r=>r[4]).filter(Boolean))).sort().map(s=>[s,s])],factorSector)+'</div>'+note(factorKey==="mom"?"按最近 60 个有效交易日的复权参考收益连乘，由高到低排序。":factorKey==="vol"?"按最近 20 个有效交易日收益率的样本标准差 × √252，由低到高排序。" :["pe","pb"].includes(factorKey)?"从低到高排列，仅纳入信号日为正的估值倍数。":"按当日换手率从高到低排序，缺失值不参与。"))+box("入选结果",(!f&&["mom","vol"].includes(factorKey)?empty("该交易日的动量与波动率正在入库。估值与换手率可先查询。"):table(["排名 / 股票","行业",factorHeading,"市值（亿元）","日涨跌"],rows.slice(factorPage*size,(factorPage+1)*size).map((o,i)=>[(factorPage*size+i+1)+"　"+sym(o.r),esc(o.r[4]),factorKey==="mom"?pct(o.v):fmt(o.v)+(["vol","turn"].includes(factorKey)?"%":""),fmt(o.r[14]==null?null:o.r[14]/10000),signed(o.r[10])]))+pager("factor",factorPage,rows.length,size)),(["mom","vol"].includes(factorKey)&&!factorSector&&f?'<button class="act" id="to-back">用此规则回测 →</button>':'<small>可用样本 '+fmt(rows.length,0)+' 只</small>'));
+ P.innerHTML=title("因子选股","在当期有报价的 A 股中，按明确的规则筛选和排序。")+factorTabs("factors")+box("筛选条件",'<div class="controls">'+opt("factor","排序因子",facs,factorKey)+opt("venue","市场",[["","全 A 股"],["SH","沪市"],["SZ","深市"],["BJ","北交所"]],factorVenue)+opt("sector","行业",[["","全部行业"],...Array.from(new Set(allStocks().map(r=>r[4]).filter(Boolean))).sort().map(s=>[s,s])],factorSector)+'</div>'+note(factorKey==="mom"?"按最近 60 个有效交易日的复权参考收益连乘，由高到低排序。":factorKey==="vol"?"按最近 20 个有效交易日收益率的样本标准差 × √252，由低到高排序。" :["pe","pb"].includes(factorKey)?"从低到高排列，仅纳入信号日为正的估值倍数。":"按当日换手率从高到低排序，缺失值不参与。"),'<a class="link-btn" href="#stocks/screen">按财务条件筛选 →</a>')+box("入选结果",(!f&&["mom","vol"].includes(factorKey)?empty("该交易日的动量与波动率正在入库。估值与换手率可先查询。"):table(["排名 / 股票","行业",factorHeading,"市值（亿元）","日涨跌"],rows.slice(factorPage*size,(factorPage+1)*size).map((o,i)=>[(factorPage*size+i+1)+"　"+sym(o.r),esc(o.r[4]),factorKey==="mom"?pct(o.v):fmt(o.v)+(["vol","turn"].includes(factorKey)?"%":""),fmt(o.r[14]==null?null:o.r[14]/10000),signed(o.r[10])]))+pager("factor",factorPage,rows.length,size)),(["mom","vol"].includes(factorKey)&&!factorSector&&f?'<button class="act" id="to-back">用此规则回测 →</button>':'<small>可用样本 '+fmt(rows.length,0)+' 只</small>'));
  P.insertAdjacentHTML("beforeend",'<section class="box"><details><summary>保存与调用选股规则</summary><div class="controls" style="margin-top:12px"><label>规则名称 <input id="rule-name" maxlength="40" value="'+esc(facs.find(a=>a[0]===factorKey)[1]+(factorVenue?" · "+({SH:"沪市",SZ:"深市",BJ:"北交所"})[factorVenue]:"")+(factorSector?" · "+factorSector:""))+'"></label><button id="rule-save" class="quiet">保存规则</button></div><p id="rule-status" role="status" class="note"></p><div id="saved-list"></div></details></section>');
  $("rule-save").onclick=()=>{const label=$("rule-name").value.trim();if(!label){$("rule-status").textContent="请先填写一个规则名称。";$("rule-name").focus();return;}
   const item={label,factorKey,factorVenue,factorSector};changeRules(rs=>[...rs.filter(r=>r.label!==label),item],"已保存规则："+label);};
@@ -265,12 +275,11 @@ function factors(){
   if(b.hasAttribute("data-load-rule")){const r=savedFilters.find(x=>x.label===b.dataset.loadRule);if(!r)return;factorKey=r.factorKey;factorVenue=r.factorVenue;factorSector=r.factorSector;factorPage=0;redrawAt(factors,"factor");}
   else if(b.hasAttribute("data-del-rule")){const label=b.dataset.delRule;changeRules(rs=>rs.filter(r=>r.label!==label),"已删除此规则");}};
  if(!ruleStorageFailed)savedFilters=readRules();displayRules();
- if(!["mom","vol"].includes(factorKey)||factorSector)P.insertAdjacentHTML("beforeend",note("当前历史回测支持动量及低波动规则，按调仓日股票范围重新筛选。估值和行业筛选展示当期结果。低市净率可在「组合表现」中做历史对照。"));
- if((f?.groups||f?.periods?.length)&&["mom","vol"].includes(factorKey)&&!factorSector){
- const means=Array.from({length:5},()=>[]),key=factorKey==="mom"?1:2;
- for(const p of f.periods||[]){const ranked=rank(p.rows.filter(r=>!factorVenue||r[0].endsWith("."+factorVenue)),key);if(ranked.length<5)continue;for(let i=0;i<5;i++){const g=ranked.slice(Math.floor(i*ranked.length/5),Math.floor((i+1)*ranked.length/5));if(g.length)means[i].push(g.reduce((s,r)=>s+r[3],0)/g.length);}}
- P.insertAdjacentHTML("beforeend",box(factorKey==="mom"?"按过去 60 日涨幅分组后的下期平均收益":"按过去 20 日波动率分组后的下期平均收益",table(["因子组","下期平均收益","调仓期数"],(f.groups?.[factorKey+"-"+(factorVenue||"all")] || means.map(a=>[a.length?a.reduce((s,n)=>s+n,0)/a.length:null,a.length])).map(([mean,n],i)=>[i===0?(factorKey==="mom"?"过去涨幅最高的 20%":"过去波动率最低的 20%"):i===4?(factorKey==="mom"?"过去涨幅最低的 20%":"过去波动率最高的 20%"):"第 "+(i+1)+" 组",n?signed(mean):"—",String(n)]))+note("每月末在当期实际有行情的股票中分成五组，下一交易日开盘建仓。这是分组统计：各期分别等权，开盘涨停或无有效成交时，该份额保留现金。优先使用逐股限价，2007 年前及限价缺失时按常见幅度估算；只用开盘时可知的价格判断。表中是多期收益的算术平均；不含费用或跨期持仓。末期截至最近收盘。")));
- }
+ if(!factorSector){
+  const actions=P.querySelectorAll(".box .ttl")[1];
+  actions?.insertAdjacentHTML("beforeend",'<button class="quiet" id="single-test">检验当前规则 →</button>');
+  $("single-test").onclick=()=>setSingleTest(factorKey,factorVenue);
+ }else P.insertAdjacentHTML("beforeend",note("行业筛选采用本期股票分类。历史检验可选择全 A 股或单个交易市场。"));
  $("factor").onchange=e=>{factorKey=e.target.value;factorPage=0;redrawAt(factors,"factor");};$("venue").onchange=e=>{factorVenue=e.target.value;factorPage=0;redrawAt(factors,"venue");};$("sector").onchange=e=>{factorSector=e.target.value;factorPage=0;redrawAt(factors,"sector");};bindPager("factor",factors,d=>factorPage+=d);
  if($("to-back"))$("to-back").onclick=()=>{bt.factor=factorKey;bt.exchange=factorVenue;navigate("backtest");};
 }
@@ -316,5 +325,5 @@ function openDetails(saved={}){
 }
 $("methods").addEventListener("close",()=>{if(!$("methods").open){coverageGeneration++;clearTimeout(coverageTimer);}});
 document.querySelector(".skip").onclick=e=>{e.preventDefault();$("content").focus({preventScroll:true});$("content").scrollIntoView({block:"start"});};
-window.addEventListener("hashchange",route);window.addEventListener("hashchange",()=>{window.scrollTo(0,0);const nav=$("navigation"),active=nav.querySelector("a.active");if(active&&nav.scrollWidth>nav.clientWidth)nav.scrollLeft+=active.getBoundingClientRect().left-nav.getBoundingClientRect().left-(nav.clientWidth-active.offsetWidth)/2;});
+window.addEventListener("hashchange",()=>{window.scrollTo(0,0);route();const nav=$("navigation"),active=nav.querySelector("a.active");if(active&&nav.scrollWidth>nav.clientWidth)nav.scrollLeft+=active.getBoundingClientRect().left-nav.getBoundingClientRect().left-(nav.clientWidth-active.offsetWidth)/2;});
 $("method").onclick=openDetails;$("close-method").onclick=()=>$("methods").close();boot();
