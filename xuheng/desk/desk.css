@@ -65,3 +65,22 @@
 
 /* Preserve native document scrolling in the full-viewport Streamlit component. */
 html{overflow-y:auto}
+
+.news-controls{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.news-help{color:var(--muted);margin-bottom:14px;font-size:13px}.news-help summary{cursor:pointer}
+.news-status{margin:8px 0 16px;font-size:12px;color:var(--muted);overflow-wrap:anywhere}
+.two.news-charts{grid-template-columns:minmax(0,1fr) minmax(0,1.6fr)}
+.news-plot{width:100%;min-height:234px}
+.news-charts details,.news-method summary{font-size:13px;color:var(--muted)}
+.news-charts details summary,.news-method summary{cursor:pointer}
+.news-headlines{list-style:none;padding:0;margin:0}
+.news-headlines li{padding:10px 0;border-bottom:1px solid var(--line)}
+.news-headlines li:first-child{padding-top:0}
+.news-headlines li:last-child{border:0}
+.news-headline{text-decoration:none;overflow-wrap:anywhere;white-space:normal}
+.news-headline:hover,.news-headline:focus-visible{text-decoration:underline}
+.news-headlines small{display:block;margin-top:3px;font-size:12px}
+.news-selection{margin:12px 0;color:var(--muted)}
+#news-stock-result .tbl td:nth-child(2){text-align:left;white-space:normal;min-width:10em}
+.news-charts .box{overflow:hidden}
+@media(max-width:760px){.two.news-charts{grid-template-columns:minmax(0,1fr)}}
