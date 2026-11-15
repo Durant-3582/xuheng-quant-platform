@@ -1,7 +1,7 @@
 import {ready} from "./bridge.js";
 
 let library;
-function loadPlotly() {
+export function loadPlotly() {
   if (window.Plotly) return Promise.resolve(window.Plotly);
   if (!library) library = ready.then(({newsPlots}) => new Promise((resolve, reject) => {
     const script = document.createElement("script");
