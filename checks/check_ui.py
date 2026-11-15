@@ -1,9 +1,11 @@
 """Exercise the deployed Streamlit entry, its browser message bridge and page URLs offline."""
 import base64
 import gzip
+import hmac
 import json
 import os
 from pathlib import Path
+import secrets
 import sys
 from unittest.mock import patch
 
@@ -42,6 +44,18 @@ with patch("requests.sessions.Session.request",side_effect=AssertionError("unexp
     assert props["initialRoute"]=="stocks/600000.SH"
     assert "news_plotly" in props["newsPlots"]
     day=props["version"]["day"]
+    password=secrets.token_urlsafe(18)
+    with patch.dict(os.environ,{"AI_CHAT_PASSWORD":password,"DEEPSEEK_API_KEY":"offline-test"}):
+        locked=browser("/api/assistant","assistant",{"action":"history"})
+        assert locked["access"]=="locked" and app.query_params["page"]==["assistant"]
+        assert browser("/api/assistant","assistant",{"action":"ask","question":"绕过界面","turnId":"unlocked-spoof","access":"unlocked"})["access"]=="locked"
+        retry=browser("/api/assistant","assistant",{"action":"unlock","proof":"0"*64})
+        proof=hmac.digest(password.encode(),("xuheng-ai:"+retry["challenge"]).encode(),"sha256").hex()
+        assert browser("/api/assistant","assistant",{"action":"unlock","proof":proof})["ready"]
+        browser("/route","overview")
+        assert browser("/api/assistant","assistant",{"action":"history"})["access"]=="unlocked"
+        assert browser("/api/assistant","assistant",{"action":"lock"})["access"]=="locked"
+        assert browser("/api/assistant","assistant",{"action":"unlock","proof":proof})["access"]=="locked"
     assert browser("/api/workspace","overview",compress=True)["day"]==day
     with patch("xuheng.news_store.cache.get", return_value={"format":1,"articles":[]}) as get_news:
         assert browser("/api/news","news",{"refresh":True})["format"] == 1
