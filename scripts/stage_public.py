@@ -10,7 +10,7 @@ PUBLIC_FILES = (
     "streamlit_app.py", "static/site-id.txt", "static/full-release.json",
     "xuheng/browser_settings/index.html", "checks/check_browser_settings.mjs", "checks/check_desk_navigation.mjs",
     "ops/publish_after_close.py", "ops/cloud_history.py", "ops/upload_private.py", "ops/盘后发布.md",
-    ".github/workflows/after-close.yml",
+    ".github/workflows/after-close.yml", ".github/workflows/news.yml", "ops/update_news.py",
     "盘后更新行情.command",
 )
 
