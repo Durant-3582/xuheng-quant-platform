@@ -193,6 +193,9 @@ def dispatch(store, path, body, signing_key, token=""):
         raise SnapshotChanged("页面与行情库交易日不同，请刷新。")
     if loc.path=="/route":
         return {}
+    if loc.path=="/api/news":
+        from .news_store import cache
+        return cache.get(store, refresh=(body or {}).get("refresh") is True)
     if loc.path=="/api/workspace":
         if q.get("view")=="factors":
             return dict(day=store.day, factors={**store.factors,"groups":store.bands["groups"],"officialLimits":True})
