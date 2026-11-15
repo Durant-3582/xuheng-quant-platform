@@ -110,6 +110,17 @@ html{overflow-y:auto}
 #study-main details summary{cursor:pointer;color:var(--green)}
 #study-main .tbl details table{width:auto}#study-main .box{min-width:0}
 #mix-output .tbl details .tbl{margin:6px 0}#study-main .controls{flex-wrap:wrap}
+#research-chat{max-width:970px}
+.answer-turn{padding:18px 20px;background:white;border:1px solid var(--line);border-radius:9px;margin-bottom:14px;overflow-wrap:anywhere}
+.answer-turn h2{font-size:16px;margin-bottom:9px}.answer-text{white-space:pre-wrap;line-height:1.75}
+.answer-turn summary{cursor:pointer;color:var(--green);margin-top:12px;font-size:13px}
+.answer-source{margin-top:12px;padding-top:10px;border-top:1px solid var(--line);min-width:0}
+.answer-source h3,.answer-source p{margin:3px 0}.answer-source>p{font-size:12px;color:var(--muted)}
+.chat-label{display:block;color:var(--muted);font-size:13px;margin-bottom:4px}
+#research-question{width:100%;font:inherit;color:var(--ink);border:1px solid #b9c9c0;border-radius:6px;padding:9px 11px;resize:vertical;min-height:4.8em;margin-bottom:10px}
+#research-question:focus-visible{outline:2px solid #7aab8e;outline-offset:2px}
+.chat-examples{display:flex;flex-wrap:wrap;gap:7px;margin-top:14px}.chat-examples button{text-align:left}
+.chat-status:not(:empty){margin-top:10px}
 @media(max-width:620px){
  #stock-diagnosis summary{grid-template-columns:minmax(0,1fr) auto;gap:1px 8px}
  #stock-diagnosis summary strong{grid-column:1/-1;grid-row:2}
