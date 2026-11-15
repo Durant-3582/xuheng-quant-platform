@@ -1,6 +1,6 @@
 import {box,esc,note,select,requireDay,offerRefresh} from "./lab.js";
 import {editorMarkup,holdingsEditor} from "./holdings.js";
-import {models,controlsForPB,markets,weighting,frequency,frequencyValue,benchmarks,benchmarkNotes,namesForModel,request,dateField,readDate,numberList,cadenceFields,showResult,methods} from "./portfolio-view.js";
+import {models,controlsForPB,markets,weighting,frequency,frequencyValue,benchmarks,benchmarkNotes,namesForModel,request,dateField,readDate,numberList,weightError,cadenceFields,showResult,methods} from "./portfolio-view.js";
 import {comparisonTab} from "./portfolio-study.js";
 
 function get(key,fallback){
@@ -68,6 +68,7 @@ function rangeTab(ctx){
     el("pm-manual").hidden=m||weight!=="manual";el("pm-weights").disabled=el("pm-manual").hidden;
     editor.render(m,null);
     el("pm-model-note").textContent=namesForModel[model]+(freq==="hold"?" 仅在区间首个交易日开盘尝试建仓。":freq==="custom"?" 从区间首个交易日开始，按交易日计数调仓。":m?" 每次调仓保留名单，重新计算目标权重。":"")
+      +(!["hold","custom"].includes(freq)?" 仅计入起止日之间的完整交易月份，最新月份可截至已入库的最后收盘。":"")
       +(weight==="tb"?" TB 使用最近 120 个有效配对交易日，按正 α 配权。":"");
     el("pm-bench-note").textContent=benchmarkNotes[el("pm-bench").value];
     el("pm-fields").disabled=busy;el("pm-run").disabled=busy;
@@ -100,6 +101,10 @@ function rangeTab(ctx){
     if(!form.reportValidity()){feedback("请检查所选参数和回测日期。",true);return;}
     const v=values();
     if(v.model==="manual"&&!v.count){feedback("自选名单为空，请添加股票或载入示例。",true);el("add-stock").focus();return;}
+    if(v.weighting==="manual"){
+      const issue=weightError(v.weights,v.count);
+      if(issue){feedback(issue,true);(v.model==="manual"?el("pm-roster-rows").querySelector("[data-weight]"):el("pm-weights"))?.focus();return;}
+    }
     const ticket=++revision;save(v);busy=true;update();feedback("正在计算区间收益、回撤和持仓…");
     try{
       const res=await request("range",{rules:v,asOf:day});if(!isCurrent()||ticket!==revision)return;
