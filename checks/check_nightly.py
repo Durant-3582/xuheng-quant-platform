@@ -22,6 +22,10 @@ def price_inputs(history, day):
 
 
 def check_calendars():
+    import datetime as dt
+    assert job.market_cutoff(dt.datetime.fromisoformat('2026-11-15T16:00:00+00:00')) == '20261115'
+    assert job.market_cutoff(dt.datetime.fromisoformat('2026-11-16T06:59:59+00:00')) == '20261115'
+    assert job.market_cutoff(dt.datetime.fromisoformat('2026-11-16T07:00:00+00:00')) == '20261116'
     pointer = {"day": "20261113", "bars": 35304971, "index": "a" * 64}
     from subprocess import CompletedProcess
     state = CompletedProcess([], 0, stdout=json.dumps(pointer))

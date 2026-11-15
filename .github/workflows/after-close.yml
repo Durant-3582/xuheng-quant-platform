@@ -2,7 +2,8 @@ name: A 股盘后更新
 
 on:
   schedule:
-    - cron: '17 11,14 * * *'
+    - cron: '17 11 * * *'
+    - cron: '17 14 * * *'
   workflow_dispatch:
     inputs:
       verify_restore:
@@ -51,3 +52,12 @@ jobs:
             args+=(--verify-restore)
           fi
           python ops/publish_after_close.py "${args[@]}"
+
+  studies:
+    name: 更新财报、因子和申万行业
+    needs: update
+    permissions:
+      contents: write
+    uses: ./.github/workflows/studies.yml
+    secrets:
+      TUSHARE_TOKEN: ${{ secrets.TUSHARE_TOKEN }}

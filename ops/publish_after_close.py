@@ -43,6 +43,14 @@ def staging_folder(day):
     return dated
 
 
+def market_cutoff(now):
+    local = now.astimezone(ZoneInfo('Asia/Shanghai'))
+    day = local.date()
+    if local.hour < 15:
+        day -= dt.timedelta(days=1)
+    return day.strftime('%Y%m%d')
+
+
 def scheduled_session(until):
     since = (dt.date.fromisoformat(until) - dt.timedelta(days=31)).strftime('%Y%m%d')
     rows = download.sync.api('trade_cal', {'exchange': 'SSE', 'is_open': '1',
@@ -102,8 +110,8 @@ def publish(until, rpm, threads, *, cloud=False, verify_restore=False):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    today = dt.datetime.now(ZoneInfo('Asia/Shanghai')).strftime('%Y%m%d')
-    parser.add_argument('--until', default=today, help='Latest date to consider (YYYYMMDD, Shanghai time).')
+    parser.add_argument('--until', default=market_cutoff(dt.datetime.now(dt.timezone.utc)),
+                        help='Latest date to consider (YYYYMMDD). Defaults to the latest date past the Shanghai close.')
     parser.add_argument('--rpm', type=int, default=180, help='Tushare query limit per minute.')
     parser.add_argument('--threads', type=int, default=10, help='Concurrent object uploads.')
     parser.add_argument('--cloud', action='store_true', help='Restore the active archive on a clean runner.')

@@ -1,7 +1,8 @@
 name: 新闻情绪更新
 on:
   schedule:
-    - cron: '9,39 * * * *'
+    - cron: '9 * * * *'
+    - cron: '39 * * * *'
   workflow_dispatch:
 
 concurrency:
