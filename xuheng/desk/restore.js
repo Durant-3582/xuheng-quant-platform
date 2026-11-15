@@ -55,7 +55,7 @@ export function restoreSettings({id,catalog,day,sample}) {
     const rows=(n,manual)=>Array.from({length:Math.min(8,Math.max(2,n))},(_,i)=>candidate("study_"+i,manual,i));
     const draft={common,criterion:get("criterion","return"),factor:rows(get("candidates",2),false),manual:rows(get("candidatesManual",2),true)};
     const state={draft};
-    if (active && previous.locked) state.restoreLock={roster:previous.lockedRoster||[]};
+    if (active && previous.locked) state.needsComparison=true;
     copy(sessionStorage,"xuheng.portfolio-comparison.v2",state);
   } catch { /* Storage may be unavailable in a private or embedded browser. */ }
 }
