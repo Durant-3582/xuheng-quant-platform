@@ -91,7 +91,7 @@ def response(store, req, token):
         if path == "/api/assistant":
             from .assistant import handle
             state = st.session_state.setdefault("research_assistant", {})
-            data = handle(store, body, state, conf("DEEPSEEK_API_KEY"), token)
+            data = handle(store, body, state, conf("DEEPSEEK_API_KEY"), token, password=conf("AI_CHAT_PASSWORD"))
         else:
             data=dispatch(store,path,body,signing_key(token),token)
         if req.get("gzip") is True:
