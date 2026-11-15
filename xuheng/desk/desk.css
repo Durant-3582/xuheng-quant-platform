@@ -102,6 +102,14 @@ html{overflow-y:auto}
 .diagnosis-data .tbl{max-height:17rem;overflow:auto}
 .diagnosis-data th{position:sticky;top:0;background:#f4f6f2;z-index:1}
 .diagnosis-data th,.diagnosis-data td{font-size:12px}
+.study-weights{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:12px 0 18px}
+.study-weights label{display:grid;gap:4px;color:var(--muted);font-size:12px}
+.study-weights input,.study-form input[type=number]{padding:6px 8px;border:1px solid #b9c9c0;border-radius:5px;font:inherit;color:var(--ink)}
+.study-weights input{width:100%}.study-form input[type=number]{width:6.5em}
+.study-plot{min-width:0;width:100%;min-height:250px}
+#study-main details summary{cursor:pointer;color:var(--green)}
+#study-main .tbl details table{width:auto}#study-main .box{min-width:0}
+#mix-output .tbl details .tbl{margin:6px 0}#study-main .controls{flex-wrap:wrap}
 @media(max-width:620px){
  #stock-diagnosis summary{grid-template-columns:minmax(0,1fr) auto;gap:1px 8px}
  #stock-diagnosis summary strong{grid-column:1/-1;grid-row:2}

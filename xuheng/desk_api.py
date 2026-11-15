@@ -196,6 +196,9 @@ def dispatch(store, path, body, signing_key, token=""):
     if loc.path=="/api/news":
         from .news_store import cache
         return cache.get(store, refresh=(body or {}).get("refresh") is True)
+    if loc.path=="/api/studies" and isinstance(body,dict):
+        from .factor_studies import analyze
+        return analyze(store,body)
     if loc.path=="/api/workspace":
         if q.get("view")=="factors":
             return dict(day=store.day, factors={**store.factors,"groups":store.bands["groups"],"officialLimits":True})

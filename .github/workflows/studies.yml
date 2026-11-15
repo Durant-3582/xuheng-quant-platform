@@ -1,0 +1,51 @@
+name: 财报、因子和申万行业更新
+on:
+  workflow_run:
+    workflows: ["A 股盘后更新"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: xuheng-study-edition
+  cancel-in-progress: false
+
+jobs:
+  update:
+    if: github.ref == 'refs/heads/main' && !github.event.repository.fork && (github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 110
+    permissions:
+      contents: write
+    env:
+      OPENBLAS_NUM_THREADS: '1'
+      PYTHONUNBUFFERED: '1'
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:
+          ref: main
+      - name: 准备研究库版本记录
+        run: |
+          directory="$RUNNER_TEMP/xuheng-studies"
+          if git ls-remote --exit-code --heads origin refs/heads/study-data > /dev/null; then
+            git fetch --depth=1 origin refs/heads/study-data
+            git worktree add --detach "$directory" FETCH_HEAD
+          else
+            status=$?
+            if [[ "$status" != 2 ]]; then exit "$status"; fi
+            git worktree add --orphan -b study-data "$directory"
+          fi
+      - name: 增量取数、核对公告日和交易日并发布私有数据包
+        env:
+          TUSHARE_TOKEN: ${{ secrets.TUSHARE_TOKEN }}
+        run: |
+          python3 -m venv "$RUNNER_TEMP/study-python"
+          "$RUNNER_TEMP/study-python/bin/pip" install --disable-pip-version-check 'requests>=2.32.3,<3' 'numpy==2.3.5'
+          "$RUNNER_TEMP/study-python/bin/python" ops/build_studies.py --cloud --publish --pointer "$RUNNER_TEMP/xuheng-studies/release.json"
+      - name: 切换至完整研究库
+        working-directory: ${{ runner.temp }}/xuheng-studies
+        run: |
+          git add -- release.json
+          if git diff --cached --quiet; then exit 0; fi
+          git -c user.name='github-actions[bot]' -c user.email='github-actions[bot]@users.noreply.github.com' commit -m 'Update research data pointer'
+          git push origin HEAD:refs/heads/study-data
