@@ -12,11 +12,40 @@ sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from xuheng.disclosed import annual_roe, latest, revisions
 from xuheng.factor_studies import percentile, rho, scored, score_order, test_factors, weights, window
 from xuheng.industry_study import backtest, exchange, month_key
+from xuheng.portfolio_risk import estimate
+from xuheng.desk_api import parse_rules
+from xuheng.portfolio import validate
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'ingest'))
 from study_sources import report_pages
 
 
 class ResearchTests(unittest.TestCase):
+    def test_covariance_cash_and_insufficient_history(self):
+        x=np.linspace(-.01,.01,120)
+        r=np.column_stack([x,-.5*x])
+        books={'equal':{'A':.6,'B':.2},'tb':{}}
+        results,usable=estimate(['A','B'],r,books)
+        self.assertEqual(usable.sum(),120)
+        self.assertEqual(results['tb']['state'],'cash')
+        self.assertAlmostEqual(results['equal']['cash'],20)
+        np.testing.assert_allclose([row[2] for row in results['equal']['rows']],[120,-20])
+        self.assertAlmostEqual(sum(row[3] for row in results['equal']['rows']),results['equal']['vol'])
+        self.assertAlmostEqual(results['equal']['matrix'][0][1],-1)
+        r[:61,1]=np.nan
+        self.assertEqual(estimate(['A','B'],r,books)[0]['equal']['state'],'short')
+        neutral={'tb':{'A':1/3,'B':2/3}}
+        self.assertEqual(estimate(['A','B'],np.column_stack([x,-.5*x]),neutral)[0]['tb']['state'],'constant')
+
+    def test_multifactor_model_validation(self):
+        from types import SimpleNamespace
+        s=SimpleNamespace(day='20261113')
+        base=dict(model='multi',count=10,fee=10,interval=1,weighting='tb',bench='000300.SH',factorWeights={'pb':40,'roe':35,'mom':25})
+        validate(s,parse_rules(base),'20260101',s.day)
+        for wrong in ({'factorWeights':{'mom':99}}, {'factorWeights':{'mom':101}}, {'factorWeights':{'unknown':100}},
+                      {'intervalUnit':'days'},{'intervalUnit':'hold'}):
+            with self.assertRaises(ValueError):
+                validate(s,parse_rules({**base,**wrong}),'20260101',s.day)
+
     def test_announcements_and_restatements(self):
         rows=[['20221231','20230401','0',1,12,40,30,8,10],['20221231','20230401','1',1,13,40,30,8,10],
               ['20221231','20230401','1',1,13,40,30,None,11],['20221231','20230902','1',1,14,40,30,9,11],
