@@ -40,8 +40,12 @@ with patch("requests.sessions.Session.request",side_effect=AssertionError("unexp
     assert not app.exception
     props=json.loads(app.get("component_instance")[0].proto.json_args)
     assert props["initialRoute"]=="stocks/600000.SH"
+    assert "news_plotly" in props["newsPlots"]
     day=props["version"]["day"]
     assert browser("/api/workspace","overview",compress=True)["day"]==day
+    with patch("xuheng.news_store.cache.get", return_value={"format":1,"articles":[]}) as get_news:
+        assert browser("/api/news","news",{"refresh":True})["format"] == 1
+        assert get_news.call_args.kwargs["refresh"] is True and app.query_params["page"] == ["news"]
     assert browser("/api/series?symbol=000300.SH","indices/000300.SH",compress=True)["rows"]
     assert app.query_params["symbol"]==["000300.SH"]
     assert browser("/api/workspace?view=factors","factors")["factors"]["latest"]
@@ -53,4 +57,4 @@ with patch("requests.sessions.Session.request",side_effect=AssertionError("unexp
     assert app.query_params["tab"]==["research"] and app.query_params["tracking"]==["preserve-me"]
     browser("/route","overview")
     assert "page" not in app.query_params and "symbol" not in app.query_params and "tab" not in app.query_params
-print("PASS: six independent desk routes, gzip, market data, portfolio results, deep links and widget reruns.")
+print("PASS: seven independent desk routes, news refresh, gzip, market data, portfolio results, deep links and widget reruns.")

@@ -2,6 +2,7 @@
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from hashlib import sha256
+import hmac
 from pathlib import Path
 from urllib.parse import urlsplit
 import gzip,json,os,re,tempfile,threading,time
@@ -11,6 +12,9 @@ from .archive import Archive,ArchiveError
 HASH=re.compile(r'[0-9a-f]{64}')
 MAX_PACK=16*1024**2
 ORIGIN='https://xuheng-course-archive-3582.alivetomato8.chatgpt.site'
+
+def market_reader(provider):
+    return hmac.digest(provider.strip().encode(), b'xuheng/market-read/v1/appgprj_6af9102ba4608191addb0f2e49174e36', 'sha256').hex()
 
 def current_release(default,reader,directory):
     origin=default['origin'].rstrip('/')
