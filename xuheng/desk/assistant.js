@@ -84,11 +84,12 @@ export async function assistantPage({panel,day,current}) {
         '<textarea id="research-question" rows="3" maxlength="900" placeholder="输入股票、指标和日期…"></textarea>'+
         '<div class="actions"><button class="primary" type="submit" '+(disabled?'disabled':'')+'>发送问题</button>'+
         (turns.length?'<button class="quiet" type="button" id="clear-chat" '+(pending?'disabled':'')+'>清空对话</button>':'')+
-        '<button class="quiet" type="button" id="lock-chat" '+(pending?'disabled':'')+'>锁定问答</button></div></form>'+
+        '<button class="quiet" type="button" id="lock-chat" '+(pending?'disabled':'')+'>'+
+        (turns.length || draft ? '锁定并清空本次对话' : '锁定问答')+'</button></div></form>'+
         '<p class="chat-status" role="status"></p>'+
         (!turns.length?'<div class="chat-examples">'+examples.map((q,i)=>'<button class="quiet" data-example="'+i+'" type="button">'+esc(q)+'</button>').join("")+'</div>':""))+'</div>';
     const input=panel.querySelector("textarea"), form=panel.querySelector("form");
-    input.value=draft; input.readOnly=pending;
+    input.value=draft; input.readOnly=!!pending;
     const send=form.querySelector('[type="submit"]');
     send.disabled=disabled || !draft.trim();
     const status=panel.querySelector(".chat-status");
@@ -101,7 +102,7 @@ export async function assistantPage({panel,day,current}) {
       e.preventDefault(); if(!send.disabled)form.requestSubmit();
     }};
     for(const button of panel.querySelectorAll("[data-example]")) {
-      button.disabled=pending;
+      button.disabled=!!pending;
       button.onclick=()=>{input.value=examples[Number(button.dataset.example)];setDraft();input.focus();};
     }
     form.onsubmit=async e=>{
