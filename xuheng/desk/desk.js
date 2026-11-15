@@ -1,6 +1,7 @@
+import {navigate} from "./navigation.js";
 import {livePanel} from "./live.js";
 import {esc,fmt,pct,signed,date,title,box,metric,note,empty,table,pager,select,line,draw,api,DataDateError,requireDay,offerRefresh,series,adjusted,compare,rank} from "./lab.js";
-import {portfolioStudy} from "./portfolio.js";
+import {portfolioStudy,remember} from "./portfolio.js";
 import {backtest} from "./backtest.js";
 import {rangeControl,bindRange} from "./ranges.js";
 import {searchField as nameInput,bindSearch} from "./search.js";
@@ -93,10 +94,10 @@ function route(){
   const render=()=>{if(ticket===version)factors();};
   if(app.factors)render();else{P.innerHTML=title("因子选股","正在读取历史研究样本…");loadFactors(ticket).then(render).catch(e=>{if(ticket===version)blank(e);});}
  }
- if(pageName==="backtest")backtest({panel:P,day:app.day,settings:bt,benchmarks:benchOpts(),refresh:()=>boot(),isCurrent:()=>ticket===version,chart,legend});
+ if(pageName==="backtest")backtest({panel:P,day:app.day,remember,settings:bt,benchmarks:benchOpts(),refresh:()=>boot(),isCurrent:()=>ticket===version,chart,legend});
  if(pageName==="portfolio"){
   const openManual=routeCode==="manual";
-  if(openManual)history.replaceState(history.state,"",location.pathname+location.search+"#portfolio");
+  if(openManual)navigate("portfolio",true,false);
   P.innerHTML=title("组合表现","查看组合在指定区间的收益、回撤与持仓，或比较参数并检验样本外表现。")+'<div id="portfolio-content"></div>';
   portfolioStudy({panel:$("portfolio-content"),day:app.day,name,chart,legend,openManual,research:routeCode==="research",isCurrent:()=>ticket===version,
     stockExists:c=>byCode.get(c)?.[2]==="stock",refresh:()=>boot(),sector:c=>byCode.get(c)?.[4]||"未分类",wireInput});
@@ -129,7 +130,7 @@ function indexDirectory(){
 }
 async function security(ticket){
  const isIndex=pageName==="indices",kind=isIndex?"index":"stock";const code=routeCode||(isIndex?bench:"600519.SH"),row=byCode.get(code);
- if(!row||row[2]!==kind){P.innerHTML=title(isIndex?"指数中心":"个股研究","未找到链接中的证券，请按名称或代码重新搜索。")+nameInput("quick","查询证券，输入股票或指数代码");wireInput("quick",kind,c=>location.hash=pageName+"/"+c);return;}
+ if(!row||row[2]!==kind){P.innerHTML=title(isIndex?"指数中心":"个股研究","未找到链接中的证券，请按名称或代码重新搜索。")+nameInput("quick","查询证券，输入股票或指数代码");wireInput("quick",kind,c=>navigate(pageName+"/"+c));return;}
  const range=detailRanges[pageName];
  if(detailSymbol!==code){detailPage=0;detailSymbol=code;}
  let html=title(isIndex?"指数中心":"个股研究",isIndex?"查找指数，并在共同交易日比较走势。":"查询个股行情、估值和历史记录。")+nameInput("quick",isIndex?"搜索指数名称或代码":"搜索股票名称或代码");
@@ -138,7 +139,7 @@ async function security(ticket){
  html+=box("历史记录",'<div id="bar-table">'+empty("读取日线…")+'</div>','<button class="quiet" id="download" disabled>导出 CSV</button>');
  html+=box(isIndex?"历史成分与权重":"财务披露",'<div class="controls">'+(isIndex?'<label>截至日期 <input id="member-date" type="date" min="2000-01-01" value="'+date(app.day)+'" max="'+date(app.day)+'"></label>':'')+'<button id="extra-data" class="quiet">'+(isIndex?'查询最近一期成分':'查看财报指标')+'</button></div><div id="extra-result"></div>');
  if(isIndex)html+=box("指数目录",'<div class="controls"><label>搜索 <input id="index-find" value="'+esc(indexFilter)+'" placeholder="代码、名称或类别"></label>'+opt("scope","范围",[["","全部目录"],["benchmark","基准 / 已核"],["equity","境内股票指数"],["industry","行业系列"],["review","范围待核"]],indexScope)+'</div><div id="listing"></div>');
- P.innerHTML=html;livePanel(P,code);wireInput("quick",kind,c=>location.hash=pageName+"/"+c);bindRange("range",range,()=>{detailPage=0;route();});
+ P.innerHTML=html;livePanel(P,code);wireInput("quick",kind,c=>navigate(pageName+"/"+c));bindRange("range",range,()=>{detailPage=0;route();});
  if(!isIndex)$("beta-bench").onchange=e=>{betaBenchmark=e.target.value;route();};
  let extraRevision=0;
  if(isIndex)$("member-date").oninput=()=>{extraRevision++;$("extra-result").replaceChildren();$("extra-data").disabled=false;};
@@ -223,7 +224,7 @@ function factors(){
  P.insertAdjacentHTML("beforeend",box(factorKey==="mom"?"按过去 60 日涨幅分组后的下期平均收益":"按过去 20 日波动率分组后的下期平均收益",table(["因子组","下期平均收益","调仓期数"],(f.groups?.[factorKey+"-"+(factorVenue||"all")] || means.map(a=>[a.length?a.reduce((s,n)=>s+n,0)/a.length:null,a.length])).map(([mean,n],i)=>[i===0?(factorKey==="mom"?"过去涨幅最高的 20%":"过去波动率最低的 20%"):i===4?(factorKey==="mom"?"过去涨幅最低的 20%":"过去波动率最高的 20%"):"第 "+(i+1)+" 组",n?signed(mean):"—",String(n)]))+note("每月末在当期实际有行情的股票中分成五组，下一交易日开盘建仓。这是分组统计：各期分别等权，开盘涨停或无有效成交时，该份额保留现金。优先使用逐股限价，2007 年前及限价缺失时按常见幅度估算；只用开盘时可知的价格判断。表中是多期收益的算术平均；不含费用或跨期持仓。末期截至最近收盘。")));
  }
  $("factor").onchange=e=>{factorKey=e.target.value;factorPage=0;factors();};$("venue").onchange=e=>{factorVenue=e.target.value;factorPage=0;factors();};$("sector").onchange=e=>{factorSector=e.target.value;factorPage=0;factors();};bindPager("factor",factors,d=>factorPage+=d);
- if($("to-back"))$("to-back").onclick=()=>{bt.factor=factorKey;bt.exchange=factorVenue;location.hash="backtest";};
+ if($("to-back"))$("to-back").onclick=()=>{bt.factor=factorKey;bt.exchange=factorVenue;navigate("backtest");};
 }
 $("navigation").innerHTML=sections.map(([key,t,path])=>'<a href="#'+key+'" data-id="'+key+'"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="'+path+'"/></svg>'+esc(t)+'</a>').join("");
 const statusText={ready:"已有日线",empty:"未返回收盘",denied:"权限受限"};
@@ -241,7 +242,7 @@ function openDetails(saved={}){
  const area=$("coverage-data");
  const pending=()=>{
    area.setAttribute("aria-busy","true");
-   area.querySelectorAll("[data-pager]").forEach(b=>{b.disabled=true;});
+   area.replaceChildren(document.createTextNode("正在读取覆盖记录…"));
  };
  const fill=async()=>{
  const ticket=++revision,requestedPage=page;pending();
