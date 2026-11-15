@@ -14,7 +14,7 @@ let latestRange=null;
 const rawHistory=get(seenKey,previous.seen);
 const history=Array.isArray(rawHistory)?rawHistory.filter(p=>Array.isArray(p)&&p.length===2&&p.every(d=>typeof d==="string"&&/^20\d{6}$/.test(d))&&p[0]<=p[1]):[];
 function readHistory(from,to){return history.some(([a,b])=>from&&to&&from<=b&&to>=a);}
-function remember(from,to){
+export function remember(from,to){
   if(!readHistory(from,to)||!history.some(([a,b])=>a<=from&&b>=to))history.push([from,to]);
   try{sessionStorage.setItem(seenKey,JSON.stringify(history));}catch{}
 }
