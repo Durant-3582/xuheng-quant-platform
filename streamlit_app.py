@@ -1,9 +1,9 @@
 """Streamlit entrypoint: execute the versioned source included in this code-only repository."""
-import hashlib,os,sys,tempfile,runpy
+import hashlib,importlib,os,sys,tempfile,threading,runpy
 from pathlib import Path
 from zipfile import ZipFile
 src=Path(__file__).resolve().parent/'source.zip'
-sha='17b05c97542aa38b79cad9f22da3002a63204354e26348d94b1fac09384d264f'
+sha='f92e330ec0829999fda8eb86ab46fffdbf7e59703716eb2b0dc7dc07e4e14967'
 base=Path(tempfile.gettempdir())/('xuheng-source-'+sha)
 if not base.is_dir():
     if hashlib.sha256(src.read_bytes()).hexdigest()!=sha:raise RuntimeError('代码包校验失败')
@@ -17,6 +17,15 @@ if not base.is_dir():
             if not base.is_dir():raise
 os.environ.setdefault('XUHENG_PUBLIC_COURSE','1')
 os.environ.setdefault('XUHENG_CLOUD_ARCHIVE','1')
-if str(base) not in sys.path:
-    sys.path.insert(0,str(base))
+# Community Cloud can reload the script without restarting its Python interpreter.
+# A previously imported package would otherwise keep resolving modules in the old bundle.
+with sys.__dict__.setdefault('_xuheng_source_lock',threading.RLock()):
+    old=sys.modules.get('xuheng')
+    if old is not None and Path(getattr(old,'__file__','') or '.').resolve().parent!=base/'xuheng':
+        for name in tuple(sys.modules):
+            if name=='xuheng' or name.startswith('xuheng.'):
+                sys.modules.pop(name,None)
+        importlib.invalidate_caches()
+    if not sys.path or sys.path[0]!=str(base):
+        sys.path[:]=[str(base),*(part for part in sys.path if part!=str(base))]
 _ = runpy.run_path(str(base/'streamlit_app.py'),run_name='__main__')
