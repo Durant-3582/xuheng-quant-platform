@@ -80,6 +80,12 @@ def resolve(store, value):
     if len(candidates) == 1:
         return next(iter(candidates.values()))
     if candidates:
+        # The same named benchmark can be published under both exchange codes.
+        # Preserve explicit suffixes and never resolve a colliding six-digit code this way.
+        if not name.isdigit() and all(row[2] == "index" for row in candidates.values()):
+            preferred = [candidates[code] for code in BENCHMARKS if code in candidates]
+            if len(preferred) == 1:
+                return preferred[0]
         options = "、".join(r[1] + " " + r[0] for r in list(candidates.values())[:5])
         raise ValueError("证券有重名或重号，请确认完整代码：" + options)
     raise ValueError("序衡证券目录中未找到该名称或代码，请提供带交易所后缀的代码。")
