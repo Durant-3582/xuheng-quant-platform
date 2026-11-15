@@ -43,25 +43,50 @@ def staging_folder(day):
     return dated
 
 
-def publish(until, rpm, threads):
+def scheduled_session(until):
+    since = (dt.date.fromisoformat(until) - dt.timedelta(days=31)).strftime('%Y%m%d')
+    rows = download.sync.api('trade_cal', {'exchange': 'SSE', 'is_open': '1',
+                             'start_date': since, 'end_date': until}, 'cal_date')
+    dates = [row['cal_date'] for row in rows]
+    if not dates or any(not DAY.fullmatch(d) or not since <= d <= until for d in dates):
+        raise ValueError('交易日历未返回有效交易日，本次不发布。')
+    return max(dates)
+
+
+def restore_base(pointer, writer_env):
+    command(ROOT / 'ops/cloud_history.py', '--pointer', json.dumps(pointer), env=writer_env)
+
+
+def publish(until, rpm, threads, *, cloud=False, verify_restore=False):
     download.authenticate(rpm)
-    day = download.last_session(until)
+    day = scheduled_session(until) if cloud else download.last_session(until)
     if not DAY.fullmatch(day) or day > until:
         raise ValueError('交易日历返回了无效日期。')
     writer_env = writer_environment(download.sync.token)
     current = json.loads(command(UPLOAD, '--current', ORIGIN, env=writer_env, capture=True).stdout)
-    if current is not None and validate_pointer(current)['day'] >= day:
+    if current is not None:
+        validate_pointer(current)
+    elif cloud:
+        raise ValueError('云端任务找不到已发布的正式库，无法增量更新。')
+    if current is not None and current['day'] >= day:
+        if verify_restore:
+            restore_base(current, writer_env)
         print(f'最新可发布交易日为 {day}，线上日期为 {current["day"]}，本次无需更新。')
         return
+    if cloud and download.last_session(until) != day:
+        raise RuntimeError(f'交易日 {day} 的收盘数据尚未就绪，保留线上版本并等待下次重试。')
 
     source_env = os.environ.copy()
     source_env.pop(WRITE_ENV, None)
     mark = PRIVATE / 'database' / 'manifest.json'
+    if cloud and not mark.exists():
+        restore_base(current, writer_env)
     local = json.loads(mark.read_bytes()) if mark.is_file() else None
     if local and (local.get('sample') is not False or local['day'] > day):
         raise ValueError('本地正式库类型或日期与待发布交易日不符。')
     if not local or local['day'] < day:
-        command(ROOT / 'ingest' / 'build.py', '--until', day, '--rpm', rpm, env=source_env)
+        command(ROOT / 'ingest' / 'build.py', '--until', day, '--rpm', rpm,
+                *(['--reuse-published'] if cloud else []), env=source_env)
     manifest = json.loads(mark.read_bytes())
     if manifest['day'] != day or manifest.get('sample') is not False:
         raise ValueError('正式库尚未完成目标交易日的构建。')
@@ -81,7 +106,11 @@ def main():
     parser.add_argument('--until', default=today, help='Latest date to consider (YYYYMMDD, Shanghai time).')
     parser.add_argument('--rpm', type=int, default=180, help='Tushare query limit per minute.')
     parser.add_argument('--threads', type=int, default=10, help='Concurrent object uploads.')
+    parser.add_argument('--cloud', action='store_true', help='Restore the active archive on a clean runner.')
+    parser.add_argument('--verify-restore', action='store_true', help='Also test a fresh restore when no update is needed.')
     args = parser.parse_args()
+    if args.verify_restore and not args.cloud:
+        parser.error('--verify-restore 只在空的云端任务中运行。')
     if not DAY.fullmatch(args.until) or args.rpm < 1 or args.threads < 1:
         parser.error('日期须为 YYYYMMDD，查询频率及并发数须为正整数。')
     dt.datetime.strptime(args.until, '%Y%m%d')
@@ -91,7 +120,7 @@ def main():
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
             raise RuntimeError('本机已有盘后发布正在运行。') from None
-        publish(args.until, args.rpm, args.threads)
+        publish(args.until, args.rpm, args.threads, cloud=args.cloud, verify_restore=args.verify_restore)
 
 
 if __name__ == '__main__':
