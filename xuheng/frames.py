@@ -9,7 +9,7 @@ import numpy as np
 
 from .archive import ArchiveError
 
-MODELS = {"mom":"60 日动量","vol":"20 日低波动","rev":"20 日短期反转","pb":"低市净率（PB）","manual":"使用自选名单"}
+MODELS = {"mom":"60 日动量","vol":"20 日低波动","rev":"20 日短期反转","pb":"低市净率（PB）","multi":"自定义多因子","manual":"使用自选名单"}
 BENCHMARKS = {"000300.SH":"沪深 300","000001.SH":"上证指数","000905.SH":"中证 500","000852.SH":"中证 1000","899050.BJ":"北证 50"}
 WEIGHTS = {"equal":"等权","tb":"TB 配权（仅做多）","manual":"手动权重"}
 MARKETS = {"":"全 A 股","SH":"沪市","SZ":"深市","BJ":"北交所"}
@@ -29,6 +29,7 @@ class Rules:
     symbols: tuple = ()
     weights: tuple = ()
     control: str = "mom"
+    factor_weights: tuple = ()
 
     @property
     def daily(self):
@@ -141,6 +142,9 @@ def frames(store, rule, start, end, book_state):
         warm(meta)
     base=store.daily
     dates,codes=base["dates"],base["codes"]
+    if rule.model=="multi":
+        from .factor_studies import monthly_ranks
+        multi_ranks=monthly_ranks(store,rule.exchange,rule.factor_weights,rule.count)
     value=store.supplement("value") if rule.model=="pb" else None
     need_proxy=rule.bench not in ("000300.SH","000001.SH")
     bench=store.supplement("bench") if need_proxy else None
@@ -198,10 +202,13 @@ def frames(store, rule, start, end, book_state):
                 markets=[[op,cl] if op and cl else None,[o2,c2] if o2 and c2 else None]
                 yield dates[i-1] if i else "",day,day,rows,decorate(day,day,markets,rows),rebalance,pair,True
         else:
+            picks=multi_ranks(key) if rule.model=="multi" else None
             for m in store.json(store.months["years"][key]):
                 day,stop=m["entry"],m["end"]
                 if day<start or stop>end:
                     continue
                 rebalance=(int(day[4:6])-1)%rule.interval==0
                 pair=ranked_pair(ranks,codes,day,rule) if rebalance and ranks is not None else None
+                if rebalance and picks is not None:
+                    pair=picks(m["signal"])
                 yield m["signal"],day,stop,m["rows"],decorate(day,stop,m["market"],m["rows"]),rebalance,pair,False
