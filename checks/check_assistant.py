@@ -1,8 +1,11 @@
 """Exercise real tool routing with deterministic provider responses; never spend API credits."""
+import hmac
 import io
 import json
+import secrets
 from types import SimpleNamespace
 import unittest
+from unittest.mock import Mock, patch
 
 from xuheng.assistant import handle
 from xuheng.assistant_clients import ServiceError, rpc_message
@@ -40,6 +43,19 @@ class AssistantTests(unittest.TestCase):
     def setUp(self):
         self.source = Provider("")
         self.args = {"symbol": "贵州茅台", "dataset": "prices", "end": "2026-11-13"}
+        self.password = "测试-" + secrets.token_urlsafe(18)
+
+    def access(self, state, action, **args):
+        return handle(STORE, {"action": action, **args}, state, "example", "example", password=self.password)
+
+    def proof(self, challenge, password=None):
+        return hmac.digest((password or self.password).encode(), ("xuheng-ai:" + challenge).encode(), "sha256").hex()
+
+    def unlocked(self, state):
+        challenge = self.access(state, "history")["challenge"]
+        result = self.access(state, "unlock", proof=self.proof(challenge))
+        self.assertEqual(result["access"], "unlocked")
+        return state
 
     def test_data(self):
         actual = execute("security_data", self.args, STORE, self.source)
@@ -60,7 +76,7 @@ class AssistantTests(unittest.TestCase):
         self.assertEqual(len(self.source.calls), 0)
 
     def test_history_followup_and_idempotence(self):
-        state, calls = {}, []
+        state, calls = self.unlocked({}), []
         def fake(messages, tools, choice):
             calls.append(choice)
             if choice == "required":
@@ -72,24 +88,69 @@ class AssistantTests(unittest.TestCase):
             return {"content":"贵州茅台当日收盘价为 1435.26 元。"}
         def send(id, text):
             return handle(STORE,{"action":"ask","question":text,"turnId":id},state,"example","example",fake,
-                          client_factory=lambda _:self.source)
+                          client_factory=lambda _:self.source,password=self.password)
         first=send("test-turn-00001","茅台的收盘价？")
         self.assertEqual(first,send("test-turn-00001","茅台的收盘价？"))
         send("test-turn-00002","再查一次？")
         self.assertEqual(len(calls),4)
         self.assertEqual(len(state["turns"]),2)
         self.assertEqual(handle(STORE,{"action":"history"},{},None,None)["turns"],[])
-        self.assertEqual(handle(STORE,{"action":"clear"},state,None,None)["turns"],[])
+        self.assertEqual(self.access(state,"clear")["turns"],[])
 
     def test_empty_exact_date_and_no_key(self):
         body={"action":"ask","question":"指定日期","turnId":"test-empty-0001"}
+        state=self.unlocked({})
         with self.assertRaises(ServiceError):
-            handle(STORE,body,{},"","example")
-        out=handle(STORE,body,{},"example","example",lambda *_:{"tool_calls":[
-            planned("security_data",{**self.args,"end":"20261114"})]},client_factory=lambda _:self.source)
+            handle(STORE,body,state,"","example",password=self.password)
+        out=handle(STORE,body,state,"example","example",lambda *_:{"tool_calls":[
+            planned("security_data",{**self.args,"end":"20261114"})]},client_factory=lambda _:self.source,password=self.password)
         self.assertIn("未返回", out["turn"]["answer"])
         self.assertEqual(out["turn"]["evidence"][0]["rows"],[])
         self.assertEqual(len(self.source.calls),1)
+
+    def test_locked_requests_do_not_reach_billed_providers(self):
+        old={"id":"existing-turn-01","question":"之前的问题","answer":"旧回答","evidence":[]}
+        state={"turns":[old]}
+        payload={"action":"ask","turnId":old["id"],"question":old["question"],"access":"unlocked","grant":True}
+        model=Mock(side_effect=AssertionError("unauthorized model request"))
+        factory=Mock(side_effect=AssertionError("unauthorized data request"))
+        for password,status in [(None,"unconfigured"),("  ","unconfigured"),(self.password,"locked")]:
+            result=handle(STORE,payload,state,"example","example",model,client_factory=factory,password=password)
+            self.assertEqual(result["access"],status)
+            self.assertEqual(result["turns"],[])
+            self.assertNotIn("turn",result)
+        self.assertEqual(self.access(state,"clear")["access"],"locked")
+        model.assert_not_called()
+        factory.assert_not_called()
+
+    def test_wrong_replay_rotation_and_relock(self):
+        state={}
+        nonce=self.access(state,"history")["challenge"]
+        bad=self.access(state,"unlock",proof=self.proof(nonce,"invalid"))
+        self.assertIn("不正确",bad["message"])
+        stale=self.access(state,"unlock",proof=self.proof(nonce))
+        self.assertEqual(stale["access"],"locked")
+        proof=self.proof(stale["challenge"])
+        self.assertEqual(self.access(state,"unlock",proof=proof)["access"],"unlocked")
+        self.assertEqual(self.access({},"unlock",proof=proof)["access"],"locked")
+        state.update(turns=[{"question":"旧对话"}],recent=[1])
+        self.assertEqual(self.access(state,"lock")["turns"],[])
+        self.assertEqual(state["recent"],[1])
+        self.assertEqual(self.access(state,"unlock",proof=proof)["access"],"locked")
+        self.unlocked(state)
+        self.password += "新"
+        self.assertEqual(self.access(state,"ask",question="刷新后",turnId="reload-check-01")["access"],"locked")
+        self.unlocked(state)
+
+    def test_wrong_password_throttle_expires(self):
+        state={}
+        with patch("xuheng.assistant_access.time.monotonic",return_value=1000):
+            for _ in range(6):
+                self.access(state,"unlock",proof="bogus")
+            nonce=self.access(state,"history")["challenge"]
+            self.assertIn("频繁",self.access(state,"unlock",proof=self.proof(nonce))["message"])
+        with patch("xuheng.assistant_access.time.monotonic",return_value=1061):
+            self.unlocked(state)
 
     def test_stream_id_and_multiline(self):
         stream = b': keepalive\n\ndata: {"jsonrpc":"2.0","method":"notifications/message"}\n\nevent: message\ndata: {"id":2,\ndata: "result":{}}\n\n'
