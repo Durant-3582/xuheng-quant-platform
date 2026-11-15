@@ -9,7 +9,7 @@ export const signed=v=>'<span class="'+(v>0?"up":v<0?"down":"")+'">'+pct(v)+'</s
 export const date=d=>d?String(d).replace(/^(\d{4})(\d{2})(\d{2})$/,"$1-$2-$3"):"—";
 export const title=(a,b)=>'<div class="intro"><h1>'+esc(a)+'</h1><p>'+esc(b)+'</p></div>';
 export const box=(a,b,extra="")=>'<section class="box"><div class="ttl"><h2>'+esc(a)+'</h2>'+extra+'</div>'+b+'</section>';
-export const metric=(a,v,h="")=>'<div class="metric"><span>'+esc(a)+'</span><b>'+v+'</b>'+(h?'<small>'+esc(h)+'</small>':'')+'</div>';
+export const metric=(a,v,h="")=>'<div class="metric"><span>'+esc(a)+'</span><b class="metric-value">'+esc(v)+'</b>'+(h?'<small>'+esc(h)+'</small>':'')+'</div>';
 export const note=s=>'<p class="note">'+esc(s)+'</p>';
 export function executionNote(e,label,coverage){
  if(!e)return "";
@@ -23,6 +23,14 @@ export function valuationNote(v,label,total){
 }
 export const empty=s=>'<p class="empty">'+esc(s)+'</p>';
 export const table=(headers,rows)=>rows.length?'<div class="tbl"><table><thead><tr>'+headers.map(s=>'<th scope="col">'+esc(s)+'</th>').join("")+'</tr></thead><tbody>'+rows.map(r=>'<tr>'+r.map(s=>'<td>'+s+'</td>').join("")+'</tr>').join("")+'</tbody></table></div>':empty("此条件下没有可用记录。");
+// After a page change, put both sighted and keyboard readers at the new rows.
+export function focusTable(area){
+ const table=area?.querySelector("table");
+ if(!table)return;
+ table.tabIndex=-1;
+ table.focus({preventScroll:true});
+ table.scrollIntoView({block:"start"});
+}
 export function pager(id,page,total,size){
  return '<div class="pager"><span>'+fmt(total,0)+' 条 · '+(page+1)+' / '+Math.max(1,Math.ceil(total/size))+' 页</span><div><button class="quiet" data-pager="'+id+'" data-delta="-1" '+(!page?"disabled":"")+'>上一页</button><button class="quiet" data-pager="'+id+'" data-delta="1" '+((page+1)*size>=total?"disabled":"")+'>下一页</button></div></div>';
 }
