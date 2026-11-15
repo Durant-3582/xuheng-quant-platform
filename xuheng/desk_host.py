@@ -5,6 +5,7 @@ import hashlib
 import hmac
 import json
 import logging
+from functools import lru_cache
 from pathlib import Path
 import re
 import secrets
@@ -19,12 +20,22 @@ from .ui_common import conf, provider_token
 # Streamlit allows browsers to cache component scripts. A new asset directory
 # URL lets existing visitors receive HTML, CSS and all modules as one revision.
 desk_dir = Path(__file__).with_name("desk")
-assets = hashlib.sha256()
-for asset in sorted(desk_dir.iterdir()):
-    if asset.suffix in (".html",".css",".js"):
-        assets.update(asset.name.encode())
-        assets.update(asset.read_bytes())
-component = declare_component("v"+assets.hexdigest()[:16]+"_market_desk", path=str(desk_dir))
+
+@lru_cache(maxsize=2)
+def register_desk(directory, digest):
+    return declare_component("v"+digest+"_market_desk", path=str(directory))
+
+
+def current_desk(directory):
+    # Community Cloud can update static files while this Python module stays loaded.
+    assets = hashlib.sha256()
+    for asset in sorted(directory.iterdir()):
+        if asset.suffix in (".html", ".css", ".js"):
+            assets.update(asset.name.encode())
+            assets.update(asset.read_bytes())
+    return register_desk(directory, assets.hexdigest()[:16])
+
+
 news_plots = declare_component("news_plotly_"+plotly.__version__.replace(".", "_"),
                                path=str(Path(plotly.__file__).parent / "package_data"))
 ROUTES = {"overview", "indices", "stocks", "news", "factors", "backtest", "portfolio", "assistant"}
@@ -123,5 +134,6 @@ def render(store):
             sync_url(req.get("route"))
         reply=response(store,req,provider_token())
         st.session_state["_desk_reply"]=reply
+    component = current_desk(desk_dir)
     component(key="desk_request",default=None,reply=reply,initialRoute=url_route(),version=version,
               newsPlots=news_plots.name)
