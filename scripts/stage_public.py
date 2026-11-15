@@ -13,6 +13,7 @@ PUBLIC_FILES = (
     "ops/publish_after_close.py", "ops/cloud_history.py", "ops/upload_private.py", "ops/盘后发布.md",
     "ops/build_studies.py", ".github/workflows/studies.yml", "ingest/sw-intermediate.pem", "static/study-release.json",
     ".github/workflows/after-close.yml", ".github/workflows/news.yml", "ops/update_news.py",
+    ".github/workflows/cloud-clock.yml", "ops/cloud_clock.py",
     "盘后更新行情.command",
 )
 
