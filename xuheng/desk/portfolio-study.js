@@ -1,6 +1,6 @@
 import {box,date,offerRefresh,requireDay,esc,fmt,note,pct,select,table} from "./lab.js";
 import {editorMarkup,holdingsEditor} from "./holdings.js";
-import {models,markets,controlsForPB,benchmarks,benchmarkNotes,weighting,frequency,frequencyValue,label,cadence,cadenceFields,dateField,readDate,numberList,request,saveResultText,showResult,methods} from "./portfolio-view.js";
+import {models,markets,controlsForPB,benchmarks,benchmarkNotes,weighting,frequency,frequencyValue,label,cadence,cadenceFields,dateField,readDate,numberList,weightError,request,saveResultText,showResult,methods} from "./portfolio-view.js";
 
 const storage="xuheng.portfolio-comparison.v2";
 const criteria=[["return","扣费后累计收益最高"],["drawdown","最大回撤最小（月度估值）"],["sharpe","月收益夏普比率最高"]];
@@ -126,7 +126,7 @@ export function comparisonTab(ctx){
   function show(where,data,rules){
     const out=where==="pm-out";showResult(el(where),out?"样本外表现":"锁定方案的样本内明细",out?"pm-holdout":"pm-insample",data,rules,ctx);
   }
-  const initialMsg=()=>state.lock?.legacy?"已恢复此前锁定的单一方案 · "+saveResultText(state.lock.rules):frozen()?"已锁定候选 "+(comp().winner+1)+" · "+saveResultText(state.lock.rules):comp()?.winner!=null?"样本内第一名为候选 "+(comp().winner+1)+"。锁定后可以运行样本外。":comp()?"所有候选的夏普比率均无法计算。请调整区间、候选参数或评价标准。":"";
+  const initialMsg=()=>state.lock?.legacy?"已恢复此前锁定的单一方案 · "+saveResultText(state.lock.rules):frozen()?"已锁定候选 "+(comp().winner+1)+" · "+saveResultText(state.lock.rules):comp()?.winner!=null?"样本内第一名为候选 "+(comp().winner+1)+"。锁定后可以运行样本外。":comp()?"所有候选的夏普比率均无法计算。请调整区间、候选参数或评价标准。":state.needsComparison?"已恢复比较设置，请核对名单和参数，重新比较并锁定第一名。":"";
   if(form){
     drawRows();
     form.oninput=form.onchange=e=>{
@@ -167,12 +167,20 @@ export function comparisonTab(ctx){
       readShared();
       if(manual()&&!editor.rows().length){feedback("请先添加自选股票或载入示例。",true);controls();el("add-stock").focus();return;}
       const p=plan();
+      for(const [i,c] of p.candidates.entries()){
+        if(c.weighting!=="manual")continue;
+        const issue=weightError(manual()?p.common.weights:c.weights,c.count);
+        if(issue){
+          feedback("候选 "+(i+1)+" · "+issue,true);controls();
+          (manual()?el("pm-roster-rows").querySelector("[data-weight]"):el("ps-"+i+"-weights"))?.focus();return;
+        }
+      }
       invalidated();keep();const ticket=revision;
       const current=()=>isCurrent()&&ticket===revision;
       busy="compare";feedback("正在比较样本内表现…");controls();
       try{
         const res=await request("compare",{plan:p,asOf:day});if(!current())return;
-        requireDay(res.day,day);state.plan=p;state.assessment=res;drawRanking();
+        requireDay(res.day,day);delete state.needsComparison;state.plan=p;state.assessment=res;drawRanking();
         const m=res.ranking[0].metrics;ctx.remember(m.from,m.to);
         feedback(initialMsg());keep();
       }catch(e){if(current()){feedback(e.message,true);offerRefresh(status,e,ctx.refresh);}}
@@ -204,26 +212,11 @@ export function comparisonTab(ctx){
     if(!frozen()||busy)return;
     removeListeners();state.lock=null;invalidated();keep();comparisonTab(ctx);
   };
-  if(state.restoreLock && !state.lock && form){
-    const imported=state.restoreLock;
-    busy="restore";controls();feedback("正在核对上次锁定的样本内方案…");
-    (async()=>{
-      try{
-        const p=plan();
-        if(manual()){
-          p.common.symbols=imported.roster.map(r=>r[0]);
-          p.common.weights=active().some(c=>c.weight==="manual")?imported.roster.map(r=>r[1]):[];
-          p.candidates.forEach(c=>{c.count=imported.roster.length;});
-        }
-        const res=await request("compare",{plan:p,asOf:day});
-        if(!res.receipt)throw Error("无法恢复此前锁定的第一名，请重新比较。");
-        const lock=await request("lock",{token:res.receipt});
-        state.assessment={...res,receipt:null};state.plan=p;state.lock={token:lock.token,rules:res.rules};
-        delete state.restoreLock;keep();
-        if(isCurrent()){drawRanking();feedback(initialMsg());}
-      }catch(error){delete state.restoreLock;keep();if(isCurrent())feedback(error.message,true);}
-      finally{busy="";if(isCurrent())controls();}
-    })();
+  // Older screens stored only a lock flag and settings, without a verifiable winner.
+  if(state.restoreLock && !state.lock){
+    delete state.restoreLock;
+    state.needsComparison=true;
+    keep();
   }
   drawRanking();if(inside&&state.lock)show("pm-in",inside,state.lock.rules);if(outside&&state.lock)show("pm-out",outside,state.lock.rules);
   const msg=initialMsg();
