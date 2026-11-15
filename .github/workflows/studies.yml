@@ -1,9 +1,9 @@
 name: 财报、因子和申万行业更新
 on:
-  workflow_run:
-    workflows: ["A 股盘后更新"]
-    types: [completed]
-    branches: [main]
+  workflow_call:
+    secrets:
+      TUSHARE_TOKEN:
+        required: true
   workflow_dispatch:
 
 concurrency:
@@ -12,7 +12,7 @@ concurrency:
 
 jobs:
   update:
-    if: github.ref == 'refs/heads/main' && !github.event.repository.fork && (github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success')
+    if: github.ref == 'refs/heads/main' && !github.event.repository.fork
     runs-on: ubuntu-24.04
     timeout-minutes: 110
     permissions:
