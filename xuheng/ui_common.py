@@ -77,7 +77,8 @@ def connection():
         provider=provider_token()
         if not provider:raise ArchiveError('正式行情服务尚未配置 Tushare 数据源。')
         # Only a domain-separated, read-only capability ever leaves the app for archive reads.
-        reader=hmac.digest(provider.strip().encode(),b'xuheng/market-read/v1/appgprj_6af9102ba4608191addb0f2e49174e36','sha256').hex()
+        from .packed_archive import market_reader
+        reader=market_reader(provider)
         directory=str(Path(tempfile.gettempdir())/'xuheng-prices-v1')
         live=active_full_release(release,reader,directory)
         archive=open_full_release(directory,release['origin'],live['index'],reader)
