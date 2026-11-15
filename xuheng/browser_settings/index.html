@@ -1,0 +1,103 @@
+<!DOCTYPE html><html lang="zh-CN"><meta charset="utf-8"><title>研究设置</title>
+<script>
+(() => {
+  const origin = document.referrer ? new URL(document.referrer).origin : location.origin;
+  const rosterKey = 'xuheng.independent.holdings.v1';
+  const draftKey = 'xuheng.independent.study.v1';
+  const filterKey = 'xuheng.independent.filters.v1';
+  const post = (type, fields) => parent.postMessage({isStreamlitMessage:true, type, ...fields}, origin);
+  let sid = '', mode = '', pendingAck = '', storageFailed = false;
+  let filters = [], previousRoster = '', lastDraft = '', work = Promise.resolve();
+  let applied = new Set();
+
+  function read(storage, key, fallback) {
+    try {
+      const raw = window[storage].getItem(key);
+      return raw ? JSON.parse(raw) : fallback;
+    } catch {
+      storageFailed = true;
+      return fallback;
+    }
+  }
+  function write(storage, key, value) {
+    try { window[storage].setItem(key, JSON.stringify(value)); }
+    catch { storageFailed = true; }
+  }
+  function reply(event, fields) {
+    const id = crypto.randomUUID();
+    post('streamlit:setComponentValue', {dataType:'json', value:{sid, event, id, storageError:storageFailed, ...fields}});
+    return id;
+  }
+  function readRoster(event) {
+    const roster = read('localStorage', rosterKey, null);
+    const equal = read('localStorage', rosterKey+'.equal', null);
+    previousRoster = JSON.stringify([roster, equal]);
+    const fields = {roster, equal};
+    if (event === 'load') fields.draft = read('sessionStorage', draftKey, null);
+    pendingAck = reply(event, fields);
+  }
+  function mergeFilters(edits) {
+    const stored = read('localStorage', filterKey, filters);
+    filters = Array.isArray(stored) ? stored : [];
+    const fresh = edits.filter(edit => !applied.has(edit.id));
+    for (const edit of fresh) {
+      filters = filters.filter(row => row.name !== edit.name);
+      if (edit.action === 'save') filters.push({name:edit.name, ...edit.rule});
+      applied.add(edit.id);
+    }
+    if (fresh.length) write('localStorage', filterKey, filters);
+  }
+  function filterReply() {
+    reply('filters', {rules:filters, applied:Array.from(applied)});
+  }
+  function updateFilters(edits, initial) {
+    work = work.then(async () => {
+      if (!initial && edits.every(edit => applied.has(edit.id))) return;
+      const update = () => mergeFilters(edits);
+      if (navigator.locks) {
+        try { await navigator.locks.request(filterKey, update); }
+        catch { update(); }
+      } else update();
+      filterReply();
+    });
+  }
+  let storageTimer;
+  addEventListener('storage', e => {
+    if (!sid) return;
+    if (mode === 'filters' && (e.key === filterKey || e.key === null)) {
+      updateFilters([], true);
+    } else if (mode !== 'filters' && [null,rosterKey,rosterKey+'.equal'].includes(e.key)) {
+      clearTimeout(storageTimer);
+      storageTimer = setTimeout(() => readRoster('sync'), 0);
+    }
+  });
+  addEventListener('message', e => {
+    if (e.source !== parent || e.origin !== origin || e.data?.type !== 'streamlit:render') return;
+    const args = e.data.args;
+    const initial = sid !== args.sid;
+    sid = args.sid;
+    mode = args.mode || 'portfolio';
+    if (mode === 'filters') {
+      if (initial) applied = new Set();
+      updateFilters(args.edits || [], initial);
+    } else if (initial) {
+      // A fresh iframe is not necessarily a fresh Streamlit session.
+      readRoster(args.write ? 'sync' : 'load');
+    } else if (args.write && (!pendingAck || args.ack === pendingAck)) {
+      pendingAck = '';
+      const failed = storageFailed;
+      const nextRoster = JSON.stringify([args.roster, args.equal]);
+      if (previousRoster !== nextRoster) {
+        write('localStorage', rosterKey, args.roster);
+        write('localStorage', rosterKey+'.equal', args.equal);
+        previousRoster = nextRoster;
+      }
+      const draft = JSON.stringify(args.draft);
+      if (draft !== lastDraft) { write('sessionStorage', draftKey, args.draft); lastDraft = draft; }
+      if (!failed && storageFailed) reply('storage', {});
+    }
+    post('streamlit:setFrameHeight',{height:0});
+  });
+  post('streamlit:componentReady',{apiVersion:1});
+})();
+</script></html>

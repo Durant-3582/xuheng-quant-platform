@@ -1,0 +1,7 @@
+.private/
+.streamlit/secrets.toml
+.streamlit/.local-course-pass
+.env
+__pycache__/
+*.pyc
+.DS_Store
