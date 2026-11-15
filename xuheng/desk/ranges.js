@@ -16,6 +16,7 @@ export function bindRange(id, state, refresh) {
     if (state.custom) { input.focus(); input.select(); return; }
     state.days = Number(field.value);
     refresh();
+    document.getElementById(id)?.focus({preventScroll:true});
   };
   function apply() {
     const days = input.valueAsNumber;
@@ -25,7 +26,9 @@ export function bindRange(id, state, refresh) {
       return;
     }
     state.days = state.lastCustom = days;
+    const focusId=document.activeElement?.id;
     refresh();
+    document.getElementById(focusId || id+"-days")?.focus({preventScroll:true});
   }
   input.oninput = () => input.setCustomValidity("");
   input.onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); apply(); } };

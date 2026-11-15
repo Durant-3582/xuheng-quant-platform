@@ -31,6 +31,7 @@ export function holdingsEditor({el,wireInput,name,stockExists,mode,isLocked,onEd
     return lock?lock.symbols.map((c,i)=>[c,lock.weighting==="manual"?lock.weights[i]:0]):list;
   }
   const total=xs=>xs.reduce((v,p)=>v+p[1],0);
+  const storable=()=>list.every(p=>number(p[1]))&&total(list)<=100.0000001;
   const spread=()=>{const weights=split(list.length);list.forEach((p,i)=>{p[1]=weights[i];});};
   function totals(){
     const xs=effective(lastLock),m=mode(),risk=el("pm-roster-summary");
@@ -38,7 +39,7 @@ export function holdingsEditor({el,wireInput,name,stockExists,mode,isLocked,onEd
     risk.classList.toggle("error",m==="manual"&&(bad||sum>100.0000001));
     risk.textContent=!xs.length?"名单为空。可搜索股票，也可载入示例。":m==="tb"?xs.length+" 只股票 · TB 在建仓或调仓时估计权重；可在结果中查看。":m==="equal"?xs.length+" 只股票 · 各占 "+fmt(100/xs.length)+"%（成交前目标）":bad?"请补齐每只股票的权重（0 至 100%）。":xs.length+" 只股票 · 目标合计 "+fmt(sum)+"% · "+(sum>100.0000001?"超过 100%，请调低权重。":"预留现金 "+fmt(Math.max(0,100-sum))+"%");
     if(m==="list"&&xs.length)risk.textContent=xs.length+" 只股票 · 各候选共用名单，分别按所选规则配权。";
-    el("pm-roster-note").textContent=lastLock?"本次检验使用锁定时的名单。":(m==="manual"?(auto?"增删股票时自动等分；修改任一权重后保留手动比例。":"新增股票使用剩余现金；移除股票腾出的资金保留为现金。 "):"")+(storageError?"此浏览器暂时无法保存名单。":"名单和手动权重仅保存在此浏览器。");
+    el("pm-roster-note").textContent=lastLock?"本次检验使用锁定时的名单。":(m==="manual"?(auto?"增删股票时自动等分；修改任一权重后保留手动比例。":"新增股票使用剩余现金；移除股票腾出的资金保留为现金。 "):"")+(!storable()?"当前权重草稿尚未保存，请补齐比例并将合计控制在 100% 以内。":storageError?"此浏览器暂时无法保存名单。":"名单和手动权重仅保存在此浏览器。");
   }
   function render(manual,lock,force=false){
     const root=el("pm-roster");root.hidden=!manual;
@@ -56,7 +57,7 @@ export function holdingsEditor({el,wireInput,name,stockExists,mode,isLocked,onEd
     el("pm-equalize").hidden=!xs.length||m!=="manual";el("pm-example").hidden=!!xs.length;
     totals();
   }
-  const write=()=>{if(list.every(p=>number(p[1])))save();};
+  const write=()=>{if(storable())save();};
   function changed(redraw=true){write();if(redraw)render(true,null,true);else totals();onEdit();}
   const rows=el("pm-roster-rows");
   rows.oninput=e=>{
