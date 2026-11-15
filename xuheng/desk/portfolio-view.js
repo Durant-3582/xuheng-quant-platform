@@ -1,18 +1,22 @@
 import {api, box, date, esc, fmt, focusTable, line, note, pct, select, signed, table, valuationNote,executionNote} from "./lab.js";
 
 import {sectorTable} from "./holdings.js";
+import {currentRule} from "./multifactor.js";
+import {bindRisk} from "./risk-view.js";
 
-export const models=[["mom","60 日动量"],["vol","20 日低波动"],["rev","20 日短期反转"],["pb","低市净率（PB）"],["manual","使用自选名单"]];
+export const models=[["mom","60 日动量"],["vol","20 日低波动"],["rev","20 日短期反转"],["pb","低市净率（PB）"],["multi","自定义多因子"],["manual","使用自选名单"]];
 export const controlsForPB=models.filter(([m])=>["mom","vol","rev"].includes(m));
 const controlName=r=>label(controlsForPB,r.controlModel??"mom");
 export const markets=[["","全 A 股"],["SH","沪市"],["SZ","深市"],["BJ","北交所"]];
 export const weighting=[["equal","等权"],["tb","TB 配权（仅做多）"],["manual","手动权重"]];
 export const frequency=[[1,"每月"],[3,"每季初"],[6,"每半年初"],["custom","自定义（交易日）"],["hold","买入并持有"]];
+export const monthlyFrequency=frequency.slice(0,3);
 export const frequencyValue=r=>r.intervalUnit==="days"?"custom":r.intervalUnit==="hold"?"hold":String(r.interval);
 export const benchmarks=[["000300.SH","沪深 300"],["000001.SH","上证指数"],["000905.SH","中证 500"],["000852.SH","中证 1000"],["899050.BJ","北证 50"]];
 export const benchmarkNotes={"000300.SH":"沪深大盘股，自 2005-04-08 发布。","000001.SH":"沪市综合指数，覆盖 2000 年以来的样本。","000905.SH":"沪深中盘股，自 2007-01-15 发布。","000852.SH":"沪深小盘股，自 2014-10-17 发布。","899050.BJ":"北交所代表性股票，自 2022-11-21 发布。"};
 export const namesForModel={mom:"按过去 60 个有效交易日的累计收益从高到低选股。",vol:"按过去 20 个有效交易日的波动率从低到高选股。",rev:"按过去 20 个有效交易日的累计收益从低到高选股。",pb:"信号日 PB 为正、具有 60 个有效交易日历史的股票进入共同股票池。低 PB 组优先选市净率最低的股票。两组使用相同的持股数、配权方式、调仓频率和费率。",manual:"按本页名单建仓。可直接增删股票，在「手动权重」下逐只填写比例。"};
 export const label=(options,value)=>options.find(([key])=>String(key)===String(value))?.[1]||"";
+namesForModel.multi="在指定市场按月末已知数据重新打分，选综合分最高的股票。历史截面按月末归档，可按月、季或半年调仓。";
 export const request=(action,body)=>api("/api/portfolio",action==="compare"?180000*body.plan.candidates.length:180000,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action,...body})});
 export function dateField(id,label,value,last){
  return '<label>'+label+' <input id="'+id+'" type="date" min="2000-01-01" max="'+esc(date(last))+'" value="'+esc(value?date(value):"")+'" required></label>';
@@ -20,7 +24,7 @@ export function dateField(id,label,value,last){
 const dailyMode=r=>r.intervalUnit==="hold"||r.intervalUnit==="days";
 export const cadence=r=>r.intervalUnit==="hold"?"买入并持有":r.intervalUnit==="days"?"每 "+r.interval+" 个交易日":label(frequency,r.interval);
 export function saveResultText(r) {
-  return label(models,r.model)+(r.model==="pb"?" 对照 "+controlName(r):"")+" · "+(r.model==="manual"?"自选 "+r.count+" 只":label(markets,r.exchange)+" · 前 "+r.count+" 只")
+  return label(models,r.model)+(r.model==="pb"?" 对照 "+controlName(r):r.model==="multi"?"（"+currentRule(r.factorWeights)+"）":"")+" · "+(r.model==="manual"?"自选 "+r.count+" 只":label(markets,r.exchange)+" · 前 "+r.count+" 只")
     +" · "+label(weighting,r.weighting)+" · "+cadence(r)+" · "+r.fee+" 基点 · "+label(benchmarks,r.bench);
 }
 function resultHTML(id,data,r,name,sector){
@@ -33,7 +37,7 @@ function resultHTML(id,data,r,name,sector){
   if(data.market)rows.push(display(label(benchmarks,r.bench),data.market));
   const end=data.months.at(-1);
   function holdTable(list,cash,isPB){
-    const holdings=list.map(h=>[esc(name(h.code))+' <small>'+esc(h.code)+'</small>'+(h.ended?' · 已退市 '+date(h.ended):h.stale?' · 期末沿用旧价':''),h.value==null?"—":isPB?fmt(h.value,4)+" 倍":pct(h.value),
+    const holdings=list.map(h=>[esc(name(h.code))+' <small>'+esc(h.code)+'</small>'+(h.ended?' · 已退市 '+date(h.ended):h.stale?' · 期末沿用旧价':''),h.value==null?"—":isPB?fmt(h.value,4)+" 倍":r.model==="multi"?fmt(h.value,3)+" 分":pct(h.value),
       h.alpha==null?"—":(h.alpha*100).toFixed(4)+"%",fmt(h.weight)+"%",fmt(h.endWeight)+"%"]);
     holdings.push(["现金","—","—",fmt(Math.max(0,100-list.reduce((s,h)=>s+h.weight,0)))+"%",fmt(cash)+"%"]);
     return table(["股票",isPB?"信号日 PB":"选股因子值","估计日 α",r.intervalUnit==="hold"?"期初目标权重":"最近目标权重","期末实际权重"],holdings)+sectorTable(list.map(h=>[h.code,h.endWeight]),sector,"查看期末行业权重");
@@ -52,7 +56,7 @@ function resultHTML(id,data,r,name,sector){
     +(data.control&&data.firstSelection&&data.firstSelection!==data.months[0].entry?note("首次有共同候选股的调仓日为 "+date(data.firstSelection)+"。此前两个组合均持有现金。"):"")
     +'<details class="pf-details"><summary>'+(data.control?"查看低 PB 持仓和权重":"查看持仓和权重")+'</summary>'+note("最近信号日 "+date(data.lastSignal)+"，期末实际权重截至 "+date(end.end)+"。")+holdTable(data.holdings,end.cash,r.model==="pb")+'</details>'
     +(data.control?'<details class="pf-details"><summary>查看'+esc(controlName(r))+'持仓和权重</summary>'+holdTable(data.control.holdings,data.control.cash,false)+'</details>':"")
-    +ledger;
+    +(data.riskSnapshot?'<details class="pf-details" id="'+id+'-risk"><summary>持仓风险贡献与相关性</summary><div data-risk-output></div></details>':"")+ledger;
 }
 function bindLedger(id,data,r){
   const details=document.getElementById(id+"-ledger"),area=document.getElementById(id+"-lines");
@@ -90,6 +94,7 @@ export function methods(){return '<details class="pf-details"><summary>计算口
 export function showResult(container, heading, id, result, rules, {name,sector,chart,legend}){
   container.innerHTML=box(heading,resultHTML(id,result,rules,name,sector));
   bindLedger(id,result,rules);plotResult(id,result,rules,chart,legend);
+  if(result.riskSnapshot)bindRisk(container.querySelector("#"+id+"-risk"),result.riskSnapshot,rules.weighting,name);
 }
 export const readDate=input=>input.value.replaceAll("-","");
 export function cadenceFields(value,days){
