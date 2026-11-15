@@ -11,6 +11,7 @@ PUBLIC_FILES = (
     "xuheng/browser_settings/index.html", "checks/check_browser_settings.mjs", "checks/check_desk_navigation.mjs",
     "checks/check_diagnosis.mjs",
     "ops/publish_after_close.py", "ops/cloud_history.py", "ops/upload_private.py", "ops/盘后发布.md",
+    "ops/build_studies.py", ".github/workflows/studies.yml", "ingest/sw-intermediate.pem", "static/study-release.json",
     ".github/workflows/after-close.yml", ".github/workflows/news.yml", "ops/update_news.py",
     "盘后更新行情.command",
 )
