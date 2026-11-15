@@ -1,4 +1,4 @@
-import {api,requireDay,DataDateError,offerRefresh, box, date, line, metric, note, pct, select, signed, pager, table, title, valuationNote,executionNote} from "./lab.js";
+import {api,requireDay,DataDateError,offerRefresh, box, date, fmt, focusTable, line, metric, note, pct, select, signed, pager, table, title, valuationNote,executionNote} from "./lab.js";
 
 const rules = [["mom", "60 日动量"], ["vol", "20 日低波动"]];
 const markets = [["", "全 A 股"], ["SH", "沪市"], ["SZ", "深市"], ["BJ", "北交所"]];
@@ -13,9 +13,9 @@ async function readResult(day,options){
   if(samples.size>=8)samples.delete(samples.keys().next().value);samples.set(key,data);return data;
 }
 function results(sim) {
-  const metrics = metric("策略累计收益", signed(sim.total), "已计交易成本")
-    + metric("最大回撤", signed(sim.dd), "按月末及末期净值")
-    + metric("平均双边换手", pct(sim.turn), "实际买卖金额之和 ÷ 调仓前资产")
+  const metrics = metric("策略累计收益", pct(sim.total), "已计交易成本")
+    + metric("最大回撤", pct(sim.dd), "按月末及末期净值")
+    + metric("平均双边换手", fmt(sim.turn)+"%", "实际买卖金额之和 ÷ 调仓前资产")
     + metric("调仓期数", String(sim.logs.length));
   return '<div class="metrics">' + metrics + '</div>'+executionNote(sim.execution,"策略",sim.limitCoverage)+valuationNote(sim.valuation,"策略",sim.total)
     + box("策略与基准净值", line("bt-chart") + '<div id="bt-legend"></div><p id="bt-comparison" class="note" role="status"></p>')
@@ -26,7 +26,7 @@ function ledger(area,logs){
   function fill(){
     const rows=all.slice(page*24,page*24+24).map(l=>[date(l.signal),date(l.entry),date(l.end),l.n+" / "+l.filled,String(l.held),String(l.stale),pct(l.turn),signed(l.ret)]);
     area.innerHTML=table(["信号日","开盘调仓日","期末","候选 / 实际持有候选","实际持仓","期末缺报价","双边换手","净收益"],rows)+pager("strategy",page,all.length,24);
-    area.querySelectorAll("button").forEach(b=>b.onclick=()=>{page+=Number(b.dataset.delta);fill();});
+    area.querySelectorAll("button").forEach(b=>b.onclick=()=>{page+=Number(b.dataset.delta);fill();focusTable(area);});
   }
   fill();
 }
@@ -145,7 +145,7 @@ export function backtest({panel, day, remember, settings, benchmarks, refresh, i
       first = sample.first;
       last = sample.last;
       field("bt-range").textContent = "可回测样本 " + date(first) + " 至 " + date(last)
-        + "。月末收盘形成信号，下一交易日开盘等权建仓。";
+        + "。从信号起日之后（含当日）的首个月末选股，下一交易日开盘建仓。截止日只计入已经结束的持有期。";
       if (autoStart || !options.from) { options.from = first; field("bfro").value = date(first); }
       if (autoEnd || !options.to) { options.to = last; field("bto").value = date(last); }
       Object.assign(settings, options, {autoStart, autoEnd});
