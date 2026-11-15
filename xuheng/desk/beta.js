@@ -13,7 +13,7 @@ export function rollingBeta(stock, index, size = 120) {
     if (!match || stock[i-1].day !== match[0] || !(bar.close > 0 && bar.pre_close > 0) || !(bar.volume>0 && stock[i-1].volume>0)) continue;
     const x = match[1], y = bar.close / bar.pre_close - 1;
     pairs++;
-    window.push([x,y]);
+    window.push([x,y,bar.day]);
     sx += x; sy += y; sxx += x*x; sxy += x*y;
     if (window.length > size) {
       const [oldX,oldY] = window.shift();
@@ -25,5 +25,14 @@ export function rollingBeta(stock, index, size = 120) {
       points.push([bar.day.replaceAll("-", ""), (sxy - sx*sy/size) / variance]);
     }
   }
-  return {pairs, points};
+  let latest = null;
+  if (window.length === size && size > 1) {
+    const covariance = (sxy - sx*sy/size) / (size-1);
+    const variance = (sxx - sx*sx/size) / (size-1);
+    const end = window.at(-1)[2];
+    const last = points.at(-1);
+    latest = {start:window[0][2], end, covariance, variance,
+      value:last?.[0] === end.replaceAll("-","") ? last[1] : null, observations:window};
+  }
+  return {pairs, points, latest};
 }
