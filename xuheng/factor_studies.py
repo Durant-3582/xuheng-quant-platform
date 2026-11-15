@@ -52,7 +52,9 @@ def scored(matrix, w, venue):
     if not len(rows):
         return rows, np.empty(0), np.empty((0,len(chosen)))
     parts=np.column_stack([percentile(rows[:,i+1]*DIRECTIONS[i]) for i in chosen])
-    score=parts @ (w[chosen]/w.sum())
+    # Equivalent weighted ranks can differ by a floating-point ulp. Keep
+    # mathematical ties together for both stock ordering and Spearman IC.
+    score=np.round((parts*(w[chosen]/w.sum())).sum(axis=1),11)
     return rows, score, parts
 
 
