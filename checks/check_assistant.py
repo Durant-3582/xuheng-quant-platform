@@ -12,7 +12,7 @@ from xuheng.assistant_tools import execute
 STOCK = ["600519.SH", "贵州茅台", "stock"]
 INDEX = ["000300.SH", "沪深300", "index"]
 STORE = SimpleNamespace(day="20261113", snapshot={"aliases": {}},
-                        catalog={s[0]: s for s in (STOCK, INDEX, ["000001.SH","上证指数","index"],
+                        catalog={s[0]: s for s in (STOCK, INDEX, ["399300.SZ","沪深300","index"], ["000001.SH","上证指数","index"],
                                                    ["000001.SZ","平安银行","stock"])})
 
 
@@ -48,6 +48,7 @@ class AssistantTests(unittest.TestCase):
         for key, name, expected in [("valuation", "贵州茅台", "daily_basic"), ("prices", "沪深 300", "index_daily")]:
             self.assertEqual(execute("security_data", {**self.args,"dataset":key,"symbol":name}, STORE, self.source)["endpoint"], expected)
         self.assertIsNone(actual["rows"][0]["开盘"])
+        self.assertEqual(self.source.calls[-1][1]["ts_code"],"000300.SH")
 
     def test_mismatch_unsupported_ambiguity_and_dates(self):
         for args in [{"symbol":"000001"}, {"end":"20260231"}, {"start":"20240101"},
