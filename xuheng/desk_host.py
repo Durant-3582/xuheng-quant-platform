@@ -28,6 +28,7 @@ component = declare_component("v"+assets.hexdigest()[:16]+"_market_desk", path=s
 news_plots = declare_component("news_plotly_"+plotly.__version__.replace(".", "_"),
                                path=str(Path(plotly.__file__).parent / "package_data"))
 ROUTES = {"overview", "indices", "stocks", "news", "factors", "backtest", "portfolio"}
+SUBPAGES = {"overview":{"rotation"}, "factors":{"multi","test"}, "stocks":{"screen"}, "portfolio":{"research","manual"}}
 HOST_STYLE = """<style>
 [data-testid="stHeader"],[data-testid="stToolbar"],[data-testid="stDecoration"],[data-testid="stStatusWidget"],
 [data-testid="stSidebar"],[data-testid="stBottom"],footer,#MainMenu {display:none!important}
@@ -50,16 +51,16 @@ def clean_route(page, detail=""):
         page="backtest"
     if page not in ROUTES:
         return "overview"
+    if detail in SUBPAGES.get(page, ()):
+        return page+"/"+detail
     if page in ("indices","stocks") and re.fullmatch(r"[A-Za-z0-9_.-]{1,40}",detail):
         return page+"/"+detail.upper()
-    if page=="portfolio" and detail in ("research","manual"):
-        return page+"/"+detail
     return page
 
 
 def url_route():
     page=st.query_params.get("page","overview")
-    detail=st.query_params.get("tab","") if page=="portfolio" else st.query_params.get("symbol","")
+    detail=st.query_params.get("tab","") or st.query_params.get("symbol","")
     return clean_route(page,detail)
 
 
@@ -72,10 +73,10 @@ def sync_url(value):
         return
     page,_,detail=route.partition("/")
     params={k:st.query_params.get_all(k) for k in st.query_params if k not in ("page","symbol","tab")}
-    if page!="overview":
+    if page!="overview" or detail:
         params["page"]="strategies" if page=="backtest" else page
     if detail:
-        params["tab" if page=="portfolio" else "symbol"]=detail
+        params["tab" if detail in SUBPAGES.get(page, ()) else "symbol"]=detail
     st.query_params.from_dict(params)
 
 
