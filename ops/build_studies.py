@@ -26,9 +26,10 @@ from xuheng.disclosed import annual_roe, latest, revisions
 from xuheng.packed_archive import PackedArchive, current_release, market_reader
 from xuheng.portfolio import opening_rules
 from xuheng.study_store import PRIVATE, MAX_BYTES, atomic, bucket, content, encode, security_id, valid
+from ingest.breadth import breadth_history
 
 
-def build(store, home, out):
+def build(store, home, out, previous=None, reader=''):
     day = store.day
     signals = [d for d, nxt in zip(store.daily['dates'], store.daily['dates'][1:]) if d[:6] != nxt[:6]]
     index = {'format':1, 'day':day, 'files':{}, 'years':{}, 'periods':[]}
@@ -102,8 +103,7 @@ def build(store, home, out):
             values = {aliases.get(c,c):v for c,v in source.items()}
             # Prefer the canonical security where the provider returns both codes.
             values.update({c:v for c,v in source.items() if c not in aliases})
-            if end == day and end != store.manifest.get('lastScheduledSession'):
-                continue
+            completed = end != day or end == store.manifest.get('lastScheduledSession')
             flags_at = opening_rules(store,entry)
             matrix, realized = [], []
             for r in p['rows']:
@@ -124,9 +124,10 @@ def build(store, home, out):
                 matrix.append([security_id(c),mom,vol,pb,roe_history[sig].get(c),pe,turn,
                                ret if observed else None, ret if buyable else 0.0])
             arrays[sig] = np.asarray(matrix,dtype='float64').reshape(-1,9)
-            arrays['returns_'+sig] = np.asarray(realized,dtype='float64').reshape(-1,2)
-            months.append([sig,entry,end])
-        if months:
+            if completed:
+                arrays['returns_'+sig] = np.asarray(realized,dtype='float64').reshape(-1,2)
+                months.append([sig,entry,end])
+        if arrays:
             index['years'][year] = months
             buf = io.BytesIO()
             np.savez_compressed(buf, **arrays)
@@ -136,6 +137,7 @@ def build(store, home, out):
     if len(industries)!=31 or any(x['through']!=day for x in industries):
         raise ValueError('行业历史未齐备')
     put('industries', encode(industries))
+    index['breadthLatest']=breadth_history(store,previous,reader,put)
     index['sessions'] = len(signals)
     return index
 
@@ -173,19 +175,24 @@ def main():
     args=parser.parse_args()
     download.authenticate(155)
     home, out = ROOT/'.private/study-sources', PRIVATE
+    previous, reader = None, ''
     if args.cloud:
         reader=market_reader(sync.token)
         seed=json.loads((ROOT/'static/full-release.json').read_bytes())
         cache=Path(tempfile.gettempdir())/'xuheng-study-prices'
         active=current_release(seed,reader,cache)
         store=PackedArchive(cache,ORIGIN,active['index'],reader)
-        base=args.pointer if args.pointer.is_file() else ROOT/'static/study-release.json'
-        previous=json.loads(base.read_bytes())
+        seed_path=ROOT/'static/study-release.json'
+        previous=json.loads(seed_path.read_bytes())
+        if args.pointer.is_file():
+            candidate=json.loads(args.pointer.read_bytes())
+            if valid(candidate,store.day) and (candidate['day']>previous['day'] or
+                    candidate['day']==previous['day'] and 'breadth/state' in candidate['files']):
+                previous=candidate
         if not valid(previous,store.day):
             raise ValueError('研究库版本与行情版本不兼容')
-        if previous['day']==store.day:
-            if not args.pointer.exists():
-                atomic(args.pointer,base.read_bytes())
+        if previous['day']==store.day and 'breadth/state' in previous['files']:
+            atomic(args.pointer,json.dumps(previous,sort_keys=True,separators=(',',':')).encode())
             print('研究库与行情库交易日一致')
             return
         restore(previous,reader,home,out)
@@ -194,7 +201,7 @@ def main():
         fetch_industries(home,store.day)
     else:
         store=Archive(ROOT/'.private/database')
-    index=build(store,home,out)
+    index=build(store,home,out,previous,reader)
     if args.publish:
         publish(index,out)
     atomic(args.pointer, json.dumps(index,ensure_ascii=True,separators=(',',':'),sort_keys=True).encode())

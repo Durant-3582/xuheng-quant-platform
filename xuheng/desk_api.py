@@ -95,9 +95,13 @@ def parse_rules(data):
         or any(not isinstance(c,str) or not CODE.fullmatch(c) for c in symbols)
         or any(type(w) not in (int,float) or not math.isfinite(w) for w in weights)):
         raise ValueError("请检查自选名单和权重。")
+    factors = ()
+    if data.get("model")=="multi":
+        from .factor_studies import weights as factor_weights
+        factors=tuple(factor_weights({"weights":data.get("factorWeights")}).tolist())
     r = Rules(model=data["model"], count=data["count"], weighting=data["weighting"], cadence=data.get("intervalUnit", "months"),
               interval=data["interval"], fee=data["fee"], bench=data["bench"], control=data.get("controlModel", "mom"),
-              exchange=data.get("exchange",""), symbols=tuple(symbols), weights=tuple(weights))
+              exchange=data.get("exchange",""), symbols=tuple(symbols), weights=tuple(weights),factor_weights=factors)
     if type(r.count) is not int or type(r.interval) is not int or type(r.fee) not in (int,float):
         raise ValueError("请填写有效的持仓数、交易日和费率。")
     return r
@@ -132,7 +136,7 @@ def portfolio(store, body, key):
     if action == "range":
         data = body["rules"]
         r = parse_rules(data)
-        return dict(day=store.day, rules=data, result=run(store, r, data["trainFrom"], data["trainTo"]))
+        return dict(day=store.day, rules=data, result=run(store, r, data["trainFrom"], data["trainTo"],risk=True))
     if action == "compare":
         plan = body["plan"]
         common, candidates, criterion = plan["common"], plan["candidates"], plan["criterion"]
@@ -164,7 +168,7 @@ def portfolio(store, body, key):
     if action=="lock":
         return dict(token=seal(data,"locked",release(store),key))
     window = "test" if action=="test" else "train"
-    return dict(day=store.day, rules=data, result=run(store,parse_rules(data),data[window+"From"],data[window+"To"]))
+    return dict(day=store.day, rules=data, result=run(store,parse_rules(data),data[window+"From"],data[window+"To"],risk=True))
 
 
 def live(store, query, token):
@@ -199,11 +203,19 @@ def dispatch(store, path, body, signing_key, token=""):
     if loc.path=="/api/studies" and isinstance(body,dict):
         from .factor_studies import analyze
         return analyze(store,body)
+    if loc.path=="/api/portfolio-risk" and isinstance(body,dict):
+        from .portfolio_risk import risk_view
+        return risk_view(store,body)
     if loc.path=="/api/workspace":
         if q.get("view")=="factors":
             return dict(day=store.day, factors={**store.factors,"groups":store.bands["groups"],"officialLimits":True})
         m=store.manifest
-        return dict(day=store.day, rows=store.snapshot["items"], aliases=store.snapshot.get("aliases",{}),
+        from .study_store import edition
+        try:
+            breadth=edition(store,refresh=False).get('breadthLatest')
+        except (ValueError,OSError):
+            breadth=None
+        return dict(day=store.day, rows=store.snapshot["items"], aliases=store.snapshot.get("aliases",{}),breadth=breadth,
                     progress={k:m[k] for k in ("ready","bars")}, sample=bool(m.get("sample")))
     if loc.path=="/api/series":
         return quotes(store,q)

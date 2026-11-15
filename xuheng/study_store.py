@@ -41,7 +41,7 @@ def valid(index, day):
             all(isinstance(h,str) and re.fullmatch('[0-9a-f]{64}', h) for h in index['files'].values()))
 
 
-def edition(store):
+def edition(store, refresh=True):
     if store.manifest.get('sample'):
         raise ArchiveError('这项研究使用正式全市场数据库。')
     local = PRIVATE / 'release.json'
@@ -58,6 +58,8 @@ def edition(store):
     with lock:
         now = time.monotonic()
         old, checked = _checked.get(store.day, (seed, 0))
+        if not refresh:
+            return old
         if checked and now - checked < 180:
             return old
         try:

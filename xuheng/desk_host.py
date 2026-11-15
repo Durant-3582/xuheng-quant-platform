@@ -28,7 +28,7 @@ component = declare_component("v"+assets.hexdigest()[:16]+"_market_desk", path=s
 news_plots = declare_component("news_plotly_"+plotly.__version__.replace(".", "_"),
                                path=str(Path(plotly.__file__).parent / "package_data"))
 ROUTES = {"overview", "indices", "stocks", "news", "factors", "backtest", "portfolio"}
-SUBPAGES = {"overview":{"rotation"}, "factors":{"multi","test"}, "stocks":{"screen"}, "portfolio":{"research","manual"}}
+SUBPAGES = {"overview":{"rotation","breadth"}, "factors":{"multi","test"}, "stocks":{"screen"}, "portfolio":{"research","manual"}}
 HOST_STYLE = """<style>
 [data-testid="stHeader"],[data-testid="stToolbar"],[data-testid="stDecoration"],[data-testid="stStatusWidget"],
 [data-testid="stSidebar"],[data-testid="stBottom"],footer,#MainMenu {display:none!important}

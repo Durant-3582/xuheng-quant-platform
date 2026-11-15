@@ -32,6 +32,13 @@ def validate(store,r,start,end):
         raise ValueError("自定义调仓间隔须为正整数交易日。")
     if r.cadence=="hold" and r.interval!=1 or r.cadence=="months" and r.interval not in (1,3,6):
         raise ValueError("请选择有效的调仓频率。")
+    if r.model=="multi":
+        if r.cadence!="months":
+            raise ValueError("历史多因子截面按月末归档，请选择每月、每季初或每半年初调仓。")
+        from .factor_studies import FACTORS, weights
+        if len(r.factor_weights)!=len(FACTORS):
+            raise ValueError("请设置六项因子的权重。")
+        weights({'weights':dict(zip(FACTORS,r.factor_weights))})
     if not r.daily and start==end:
         raise ValueError("按月估值须覆盖完整持有期。")
     if r.model=="pb" and r.control not in COL:
@@ -170,22 +177,25 @@ def valuation(book,quotes,life,day):
 
 
 @lru_cache(maxsize=20)
-def _cached_monthly_model(store,r,start,end):
-    return _compute(store,r,start,end)
+def _cached_monthly_model(store,r,start,end,risk):
+    return _compute(store,r,start,end,risk)
 
-def run(store,r:Rules,start,end):
+def run(store,r:Rules,start,end,risk=False):
     # Only shared model results on an immutable release enter this bounded cache.
     # Return a detached result so display code cannot alter another visitor's calculation.
     if getattr(store,'release_id',None) and not r.daily and r.model!='manual':
-        return deepcopy(_cached_monthly_model(store,r,start,end))
-    return _compute(store,r,start,end)
+        return deepcopy(_cached_monthly_model(store,r,start,end,risk))
+    return _compute(store,r,start,end,risk)
 
-def _compute(store,r:Rules,start,end):
+def _compute(store,r:Rules,start,end,risk=False):
     validate(store,r,start,end)
     main=Book()
     equal=main if r.weighting=="equal" else Book()
     control=Book() if r.model=="pb" else None
     books=[main]+([equal] if equal is not main else [])+([control] if control else [])
+    tb=main if r.weighting=='tb' else (Book() if risk else None)
+    if tb is not None and tb is not main:
+        books.append(tb)
     history=[]; holdings={}; paired_holdings={}
     seen=estimates=other_fits=0
     market_curve=[];market_base=0.;market_peak=100.;market_dd=0.;missing=0;gap=True;segment=None
@@ -216,6 +226,8 @@ def _compute(store,r:Rules,start,end):
         wealth,ret,turn=main.advance(q,weights,fee,rebalance,at_open,stop)
         if equal is not main:
             equal.advance(q,targets(picks,r,"equal"),fee,rebalance,at_open,stop)
+        if tb is not None and tb is not main:
+            tb.advance(q,targets(picks,r,"tb"),fee,rebalance,at_open,stop)
         paired_open=control.advance(q,peer_weights,fee,rebalance,at_open,stop)[0] if control else None
         quote=market[index] if index<len(market) else None
         if quote and min(quote)>0:
@@ -266,6 +278,13 @@ def _compute(store,r:Rules,start,end):
              overlap=None,limitCoverage=store.bands["coverage"])
     if missing and segment:
         out["overlap"]={"from":segment["from_day"],**{k:segment[k] for k in ("to","market","main","control")}}
+    if risk:
+        def proportions(book):
+            return {c:v/book.nav for c,v in book.positions.items() if v>0}
+        variants={'equal':equal,'tb':tb}
+        if r.weighting=='manual':
+            variants['manual']=main
+        out['riskSnapshot']={'end':previous,'asOf':store.day,'books':{k:proportions(b) for k,b in variants.items()}}
     if control:
         out["control"]={**control.metrics(),"missingFits":r.weighting=="tb" and not other_fits,"holdings":finalize(control,paired_holdings),
                         "cash":100*control.cash/control.nav,"valuation":valuation(control,q,store.stock_life,previous)}

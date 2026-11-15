@@ -1,5 +1,7 @@
 import {box,date,offerRefresh,requireDay,esc,fmt,note,pct,select,table} from "./lab.js";
 import {editorMarkup,holdingsEditor} from "./holdings.js";
+import {defaults as defaultMix,currentRule,readMix,totalText,validMix,weightInputs} from "./multifactor.js";
+import {monthlyFrequency} from "./portfolio-view.js";
 import {models,markets,controlsForPB,benchmarks,benchmarkNotes,weighting,frequency,frequencyValue,label,cadence,cadenceFields,dateField,readDate,numberList,weightError,request,saveResultText,showResult,methods} from "./portfolio-view.js";
 
 const storage="xuheng.portfolio-comparison.v2";
@@ -27,7 +29,7 @@ function restore(day,legacy){
 }
 function persist(){try{sessionStorage.setItem(storage,JSON.stringify(state));return true;}catch{return false;}}
 function candidateLabel(c,manual){
-  const name=manual?"自选名单":label(factorModels,c.model)+" · "+c.count+" 只";
+  const name=manual?"自选名单":label(factorModels,c.model)+(c.model==="multi"?"（"+currentRule(c.factorWeights)+"）":"")+" · "+c.count+" 只";
   return name+" · "+label(weighting,c.weighting)+" · "+cadence(c);
 }
 function rankingTable(assessment,plan){
@@ -77,11 +79,17 @@ export function comparisonTab(ctx){
   const keep=()=>{el("pm-storage").hidden=persist();};
   function rowHTML(c,i){
     const prefix="ps-"+i+"-",m=manual();
+    const multi=!m&&c.model==="multi";
+    if(multi){
+      c.factorWeights??={...defaultMix};
+      if(!["1","3","6"].includes(String(c.freq)))c.freq="1";
+    }
     return '<div class="pf-candidate" data-row="'+i+'"><div class="pf-row-head"><strong>候选 '+(i+1)+'</strong><button type="button" class="quiet" data-remove-row="'+i+'" aria-label="移除候选 '+(i+1)+'" '+(active().length<=2?"disabled":"")+'>移除</button></div><div class="controls">'
       +(m?"":select(prefix+"model","选股模型",factorModels,c.model)+'<label>目标持股数 <input id="'+prefix+'count" required type="number" min="1" max="200" value="'+esc(c.count)+'"></label>')
-      +select(prefix+"weight","配权方式",weighting,c.weight)+select(prefix+"freq","调仓频率",frequency,c.freq)
+      +select(prefix+"weight","配权方式",weighting,c.weight)+select(prefix+"freq","调仓频率",multi?monthlyFrequency:frequency,c.freq)
       +'<label '+(c.freq==="custom"?"":"hidden")+'>间隔（交易日） <input id="'+prefix+'days" type="number" step="1" min="1" required value="'+esc(c.days)+'" '+(c.freq==="custom"?"":"disabled")+'></label>'
-      +(m?"":'<label '+(c.weight==="manual"?"":"hidden")+'>按排名填写权重（%） <input id="'+prefix+'weights" placeholder="例如 50,30,20" value="'+esc(c.weights)+'" '+(c.weight==="manual"?"required":"disabled")+'></label>')+'</div></div>';
+      +(m?"":'<label '+(c.weight==="manual"?"":"hidden")+'>按排名填写权重（%） <input id="'+prefix+'weights" placeholder="例如 50,30,20" value="'+esc(c.weights)+'" '+(c.weight==="manual"?"required":"disabled")+'></label>')+'</div>'+
+      (multi?'<fieldset><legend>选股因子权重</legend>'+weightInputs(prefix+"mix-",c.factorWeights)+'<p class="note" data-total>'+totalText(c.factorWeights)+'</p></fieldset>':"")+'</div>';
   }
   function drawRows(){el("ps-rows").innerHTML=active().map(rowHTML).join("");}
   function readShared(){
@@ -92,7 +100,7 @@ export function comparisonTab(ctx){
   function plan(){
     const positions=manual()?editor.rows():[],hasManual=manual()&&active().some(c=>c.weight==="manual");
     return {criterion:draft.criterion,common:{...common,exchange:manual()?"":common.exchange,symbols:positions.map(p=>p[0]),weights:hasManual?positions.map(p=>p[1]):[]},
-      candidates:active().map(c=>({model:manual()?"manual":c.model,count:manual()?positions.length:Number(c.count),weighting:c.weight,...cadenceFields(c.freq,c.days),weights:!manual()&&c.weight==="manual"?numberList(c.weights):[]}))};
+      candidates:active().map(c=>({model:manual()?"manual":c.model,...(!manual()&&c.model==="multi"?{factorWeights:{...c.factorWeights}}:{}),count:manual()?positions.length:Number(c.count),weighting:c.weight,...cadenceFields(c.freq,c.days),weights:!manual()&&c.weight==="manual"?numberList(c.weights):[]}))};
   }
   function invalidated(){
     revision++;state.assessment=null;state.plan=null;inside=outside=null;el("ps-ranking").replaceChildren();el("pm-in").replaceChildren();el("pm-out").replaceChildren();
@@ -134,8 +142,13 @@ export function comparisonTab(ctx){
       const row=e.target.closest("[data-row]");
       if(row){
         const i=Number(row.dataset.row),c=active()[i],field=e.target.id.slice(("ps-"+i+"-").length);
+        if(e.target.hasAttribute("data-mix-factor")){
+          c.factorWeights=readMix(row);row.querySelector("[data-total]").textContent=totalText(c.factorWeights);edited();return;
+        }
         if(!Object.hasOwn(c,field))return;
+        const before=c[field];
         c[field]=e.target.value;
+        if(field==="model"&&before!==c.model){drawRows();el("ps-"+i+"-model").focus({preventScroll:true});edited();return;}
         for(const [id,show] of [["days",c.freq==="custom"],["weights",c.weight==="manual"]]){
           const n=el("ps-"+i+"-"+id);if(n){n.disabled=!show;n.required=show;n.closest("label").hidden=!show;}
         }
@@ -168,6 +181,7 @@ export function comparisonTab(ctx){
       if(manual()&&!editor.rows().length){feedback("请先添加自选股票或载入示例。",true);controls();el("add-stock").focus();return;}
       const p=plan();
       for(const [i,c] of p.candidates.entries()){
+        if(c.model==="multi"&&!validMix(c.factorWeights)){feedback("候选 "+(i+1)+" 的因子权重合计须为 100%。",true);controls();el("ps-"+i+"-mix-mom").focus();return;}
         if(c.weighting!=="manual")continue;
         const issue=weightError(manual()?p.common.weights:c.weights,c.count);
         if(issue){

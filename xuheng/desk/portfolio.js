@@ -2,6 +2,7 @@ import {box,esc,note,select,requireDay,offerRefresh} from "./lab.js";
 import {editorMarkup,holdingsEditor} from "./holdings.js";
 import {models,controlsForPB,markets,weighting,frequency,frequencyValue,benchmarks,benchmarkNotes,namesForModel,request,dateField,readDate,numberList,weightError,cadenceFields,showResult,methods} from "./portfolio-view.js";
 import {comparisonTab} from "./portfolio-study.js";
+import {defaults,readMix,takeRule,totalText,validMix,weightInputs} from "./multifactor.js";
 
 function get(key,fallback){
   try{return JSON.parse(sessionStorage.getItem(key))??fallback;}catch{return fallback;}
@@ -34,12 +35,18 @@ function rangeTab(ctx){
   const cadences=saved.cadences??={...(previous.cadences||{})};
   const factor=saved.factor??={count:r.model==="manual"?10:r.count,weight:r.model==="manual"?"equal":r.weighting,
     exchange:r.exchange||"",control:r.controlModel||"mom"};
+  const imported=openManual?null:takeRule();
+  let mix=imported?.weights||r.factorWeights||saved.mix||{...defaults};
   let manualWeight=r.model==="manual"?r.weighting:saved.manualWeight||"manual";
-  const group=m=>m==="manual"?"manual":"factor";
+  const group=m=>m==="manual"?"manual":m==="multi"?"multi":"factor";
   const preference=m=>cadences[group(m)]||{freq:m==="manual"?"hold":"1",days:"10"};
   let f=frequencyValue(r),days=r.intervalUnit==="days"?String(r.interval):preference(r.model).days;
+  if(imported){
+    r.model="multi";r.weighting=factor.weight;factor.exchange=imported.venue;
+    f=cadences.multi?.freq||"1";latestRange=null;
+  }
   if(openManual&&r.model!=="manual"){
-    cadences.factor={freq:f,days};Object.assign(r,{model:"manual",weighting:manualWeight});
+    cadences[group(r.model)]={freq:f,days};Object.assign(r,{model:"manual",weighting:manualWeight});
     ({freq:f,days}=preference("manual"));latestRange=null;
   }
   const fields=select("pm-model","选股模型",models,r.model)+select("pm-control","对照模型",controlsForPB,factor.control)+select("pm-exchange","市场",markets,factor.exchange)
@@ -50,18 +57,26 @@ function rangeTab(ctx){
     +'<label>单边成本（基点） <input id="pm-cost" required type="number" min="0" max="100" step="0.1" value="'+esc(r.fee)+'"></label>';
   panel.innerHTML=box("组合规则",'<form id="pm-form" novalidate><fieldset id="pm-fields"><div class="controls">'+fields+'</div><p class="note" id="pm-model-note"></p><p class="note" id="pm-bench-note"></p><div id="pm-manual"><label for="pm-weights">按排名填写权重（%）</label> <input id="pm-weights" class="entry" placeholder="例如 50,30,20" value="'+esc(r.rankWeightText??(r.model==="manual"?"":r.weights?.join(",")||""))+'"></div>'+editorMarkup()+'<div class="pf-windows"><div><h3>回测区间</h3><div class="controls">'+dateField("pm-from","起日",initialFrom,day)+dateField("pm-to","截止日",initialTo,day)+'</div></div></div></fieldset><div class="actions"><button type="submit" id="pm-run" class="act">运行区间回测</button></div></form><p id="pm-status" class="pf-status" role="status"></p>'+methods())+'<div id="pm-in"></div>';
   const form=el("pm-form"),status=el("pm-status");
+  el("pm-model-note").insertAdjacentHTML("afterend",'<fieldset id="pm-mix"><legend>选股因子权重</legend>'+weightInputs("pm-mix-",mix)+'<p class="note" id="pm-mix-total"></p></fieldset>');
   let busy=false,lastModel=r.model,revision=0;
   const editor=holdingsEditor({el,wireInput,name,stockExists,mode:()=>el("pm-weight").value,isLocked:()=>busy,onEdit:edited,legacy:previous.draft});
   function values(){
     const model=el("pm-model").value,m=model==="manual",w=el("pm-weight").value,rows=editor.rows();
     return {model,...(model==="pb"?{controlModel:el("pm-control").value}:{}),exchange:m?"":el("pm-exchange").value,
+      ...(model==="multi"?{factorWeights:readMix(el("pm-mix"))}:{}),
       count:m?rows.length:el("pm-count").valueAsNumber,weighting:w,...cadenceFields(el("pm-frequency").value,el("pm-days").value),
       bench:el("pm-bench").value,fee:el("pm-cost").valueAsNumber,symbols:m?rows.map(p=>p[0]):[],
       weights:w!=="manual"?[]:m?rows.map(p=>p[1]):numberList(el("pm-weights").value),
       trainFrom:readDate(el("pm-from")),trainTo:readDate(el("pm-to"))};
   }
   function update(){
-    const model=el("pm-model").value,m=model==="manual",weight=el("pm-weight").value,freq=el("pm-frequency").value;
+    const model=el("pm-model").value,m=model==="manual",weight=el("pm-weight").value;
+    const multi=model==="multi", menu=el("pm-frequency");
+    for(const opt of menu.options){const hide=multi&&["hold","custom"].includes(opt.value);opt.hidden=hide;opt.disabled=hide;}
+    if(multi&&["hold","custom"].includes(menu.value))menu.value="1";
+    const freq=menu.value;
+    el("pm-mix").hidden=!multi;el("pm-mix").disabled=!multi;
+    if(multi)el("pm-mix-total").textContent=totalText(readMix(el("pm-mix")));
     for(const [id,visible] of [["pm-count",!m],["pm-exchange",!m],["pm-control",model==="pb"],["pm-days",freq==="custom"]]){
       el(id).disabled=!visible;el(id).closest("label").hidden=!visible;
     }
@@ -77,6 +92,7 @@ function rangeTab(ctx){
   function save(v){
     if(v.model==="manual")manualWeight=v.weighting;
     else Object.assign(factor,{count:el("pm-count").value,weight:v.weighting,exchange:v.exchange,control:el("pm-control").value});
+    if(v.model==="multi")saved.mix=v.factorWeights;
     Object.assign(saved,{draft:{...v,rankWeightText:el("pm-weights").value},from:v.trainFrom,to:v.trainTo,cadences,manualWeight,factor});
     try{sessionStorage.setItem(rangeKey,JSON.stringify(saved));}catch{}
   }
@@ -86,7 +102,7 @@ function rangeTab(ctx){
       cadences[group(lastModel)]={freq:el("pm-frequency").value,days:el("pm-days").value};
       const next=preference(model);el("pm-frequency").value=next.freq;el("pm-days").value=next.days;
       if(model==="manual")el("pm-weight").value=manualWeight;
-      else{manualWeight=el("pm-weight").value;el("pm-count").value=factor.count;el("pm-weight").value=factor.weight;}
+      else if(lastModel==="manual"){manualWeight=el("pm-weight").value;el("pm-count").value=factor.count;el("pm-weight").value=factor.weight;}
     }
     lastModel=model;cadences[group(model)]={freq:el("pm-frequency").value,days:el("pm-days").value};
     revision++;busy=false;latestRange=null;el("pm-in").replaceChildren();update();save(values());feedback("");
@@ -100,6 +116,7 @@ function rangeTab(ctx){
     e.preventDefault();if(busy)return;
     if(!form.reportValidity()){feedback("请检查所选参数和回测日期。",true);return;}
     const v=values();
+    if(v.model==="multi"&&!validMix(v.factorWeights)){feedback("选股因子权重合计须为 100%。",true);el("pm-mix-mom").focus();return;}
     if(v.model==="manual"&&!v.count){feedback("自选名单为空，请添加股票或载入示例。",true);el("add-stock").focus();return;}
     if(v.weighting==="manual"){
       const issue=weightError(v.weights,v.count);
@@ -115,6 +132,6 @@ function rangeTab(ctx){
     }catch(e){if(isCurrent()&&ticket===revision){feedback(e.message,true);offerRefresh(status,e,ctx.refresh);}}
     finally{if(isCurrent()&&ticket===revision){busy=false;update();}}
   };
-  update();if(openManual)save(values());
+  update();if(openManual||imported)save(values());
   if(latestRange?.day===day&&latestRange.key===JSON.stringify(values())){display(latestRange.result,latestRange.rules);feedback("回测已完成。");}
 }

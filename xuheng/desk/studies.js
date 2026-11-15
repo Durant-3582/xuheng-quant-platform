@@ -1,11 +1,10 @@
 import {api, box, date, empty, esc, fmt, line, metric, note, pager, pct, select, signed, table, title} from "./lab.js";
 import {navigate} from "./navigation.js";
 import {loadPlotly} from "./news-charts.js";
+import {factors,defaults,currentRule,weightInputs,sendRule} from "./multifactor.js";
 
 const el=id=>document.getElementById(id);
-const factors={mom:"60 日动量",vol:"20 日低波动",pb:"低市净率",roe:"最近年报 ROE",pe:"低滚动市盈率",turn:"当日高换手"};
 const markets=[["","全 A 股"],["SH","沪市"],["SZ","深市"],["BJ","北交所"]];
-const defaults={mom:25,vol:0,pb:40,roe:35,pe:0,turn:0};
 const multi={weights:{...defaults},venue:"",page:0};
 const screen={minROE:10,maxDebt:70,sort:"revenue",period:"",venue:"",page:0};
 const test={rule:"mom",venue:"",from:"",to:""};
@@ -18,7 +17,6 @@ const error=e=>'<p class="error" role="alert">'+esc(e?.message||String(e))+'</p>
 const clean=s=>s.replaceAll("-","");
 const key=o=>JSON.stringify(o);
 const sum=w=>Object.values(w).reduce((s,x)=>s+x,0);
-const currentRule=w=>Object.entries(w).filter(([,v])=>v>0).map(([k,v])=>factors[k]+" "+v+"%").join(" · ");
 const makeRequest=(env,body)=>api("/api/studies",120000,{body:JSON.stringify({...body,asOf:env.day})});
 function metadata(env) {
   if(stamp!==env.day){
@@ -135,7 +133,7 @@ export function multiPage(env) {
   const head=title("因子选股","按信号日可用数据计算因子排名。")+factorTabs("factors/multi");
   return setup(env,head,async(root,meta)=>{
     root.innerHTML=box("多因子配分",'<form id="mix-form"><div class="controls">'+select("mix-venue","股票池",markets,multi.venue)+'</div>'+
-      '<div class="study-weights">'+Object.keys(factors).map(k=>field("w-"+k,factors[k]+"（%）",multi.weights[k],'type="number" min="0" max="100" step="0.01"')).join("")+'</div>'+
+      weightInputs("w-",multi.weights)+
       '<div class="controls">'+action("mix-run","计算排名")+'<button type="button" class="quiet" id="mix-reset">恢复默认权重</button><span id="mix-sum"></span></div></form>'+
       note("先取所选因子均有数据的股票，再在同一股票池内计算百分位。低估值和低波动按低值优先，其余按高值优先。总分为各项百分位的加权平均；权重为零的因子不影响入选。质量使用最近已披露且距信号日不超过 18 个月的年报 ROE。"))+'<div id="mix-output"></div>';
     const form=el("mix-form"),out=el("mix-output");
@@ -161,8 +159,9 @@ export function multiPage(env) {
           table(["排名","股票","综合分","配分依据"],res.rows.map(([c,score,vals,parts,annual],i)=>[res.page*25+i+1,env.symbol(c),fmt(score,3),
             '<details><summary>查看分项</summary>'+table(["因子","原值","百分位分","贡献分"],res.keys.map((k,j)=>[factors[k],fmt(vals[j])+(["pb","pe"].includes(k)?" 倍":"%"),fmt(parts[j]),fmt(parts[j]*multi.weights[k]/100)]))+
             (annual?note("ROE 取自 "+date(annual[0])+" 年报，公告日 "+date(annual[1])+"。"):"")+'</details>']))+
-          pager("multi",res.page,res.total,25),'<button type="button" class="quiet" id="mix-test">检验当前规则 →</button>');
+          pager("multi",res.page,res.total,25),'<div class="actions"><button type="button" class="quiet" id="mix-test">检验当前规则 →</button><button type="button" class="act" id="mix-portfolio">用此规则回测 →</button></div>');
         el("mix-test").onclick=()=>{test.rule="multi";test.venue=multi.venue;testResults=null;navigate("factors/test");};
+        el("mix-portfolio").onclick=()=>{sendRule(multi.weights,multi.venue);navigate("portfolio");};
         bindPages(out,delta=>{multi.page+=delta;run();});
       }catch(e){if(ticket===seq&&env.current())bindRetry(out,e,run);}
     }

@@ -85,6 +85,28 @@ def score_order(rows, score):
     return np.lexsort((suffix_order[ids // 1000000], ids % 1000000, -score))
 
 
+def monthly_ranks(store, venue, factor_weights, count):
+    index = edition(store)
+    reader = getattr(store,'service','')
+    codes = {security_id(c):c for c in store.stock_life}
+    w = np.asarray(factor_weights,dtype=float)
+    def year_picker(year):
+        key = 'panel/'+year
+        if key not in index['files']:
+            raise ValueError('多因子研究库尚未覆盖该年份，截止日为 '+index['day']+'。')
+        data = content(index,key,reader)
+        def choose(day):
+            with np.load(io.BytesIO(data),allow_pickle=False) as archive:
+                if day not in archive:
+                    raise ValueError('该月末的因子数据尚未入库，请缩短区间或待盘后更新。')
+                # Future holding returns are deliberately excluded from the selection input.
+                rows, scores, _ = scored(archive[day][:,:7],w,venue)
+            top = score_order(rows,scores)[:count]
+            return len(rows), [(codes[int(rows[i,0])],float(scores[i])) for i in top], []
+        return choose
+    return year_picker
+
+
 def factor_overlap(panel, venue):
     fields = panel[:, 1:7]
     usable = np.isfinite(fields).all(axis=1) & (fields[:, 2] > 0) & (fields[:, 4] > 0)
@@ -211,6 +233,10 @@ def analyze(store,body):
         raise ValueError('交易市场无效。')
     if action=='meta':
         result={'counts':index['counts'],'periods':index['periods'],'defaultPeriod':index['defaultPeriod']}
+    elif action=='breadth':
+        if 'breadth' not in index['files']:
+            raise ValueError('该期研究库的均线宽度尚未更新。')
+        result={'rows':read(index,'breadth',reader)}
     elif action=='reports':
         code=body.get('code')
         if code not in store.catalog or store.catalog[code][2]!='stock':
