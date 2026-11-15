@@ -36,7 +36,7 @@ def fetch_dates(store, day):
         sync.save(path,[[r['ts_code'],r['up_limit'],r['down_limit']] for r in rows])
 
 
-def build(store, day, target, require_complete=True):
+def build(store, day, target, require_complete=True, *, previous=None):
     rd=store/'research'/day
     idx=sync.read(rd/'days-index.gz');codes=idx['codes'];codeset=set(codes);codeid={c:i for i,c in enumerate(codes)}
     if len(codes)>=8192:raise ValueError('目录已超出限价稀疏编码范围')
@@ -46,9 +46,31 @@ def build(store, day, target, require_complete=True):
     for d in idx['dates']:
         if d>=FIRST:ym_days[d[:6]].append(d)
     byday={};month_changes={};missing=[]
+    if previous:
+        prior = sync.read(store / 'research' / previous / 'opening-execution.gz')
+        expected = {d for d in idx['dates'] if FIRST <= d <= previous}
+        if (prior['cutoff'] != previous or set(prior['days']) != expected
+                or prior['coverage']['verifiedDays'] != len(expected)):
+            raise ValueError('已发布的成交限制与交易日历不符。')
+        stats.update(prior['stats'])
+        old_codes = prior['codes']
+        remap = None if old_codes == codes else np.asarray([codeid[c] for c in old_codes], dtype='<u2')
+        starts = {dates[0] for dates in ym_days.values()}
+        for d, encoded in prior['days'].items():
+            if remap is not None or d in starts:
+                pairs = np.frombuffer(base64.b64decode(encoded, validate=True), dtype='<u2')
+                if remap is not None:
+                    pairs = ((remap[pairs >> 3] << 3) | (pairs & 7)).astype('<u2')
+                    encoded = base64.b64encode(pairs.tobytes()).decode()
+                if d in starts:
+                    month_changes[d] = {codes[int(v) >> 3]: int(v) & 3 for v in pairs if not int(v) & 4}
+            byday[d] = encoded
     for ym,dates in ym_days.items():
-        if all(not (store/'open-bands'/(d+'.gz')).exists() for d in dates):
-            missing.extend(dates);continue
+        pending = [d for d in dates if d not in byday]
+        if not pending:
+            continue
+        if all(not (store/'open-bands'/(d+'.gz')).exists() for d in pending):
+            missing.extend(pending);continue
         data=gzip.decompress((store/(idx['parts'][ym]+'.gz')).read_bytes())
         magic,nd,n=struct.unpack_from('<4sHH',data)
         assert magic==b'XHD1' and len(dates)==nd
@@ -56,6 +78,8 @@ def build(store, day, target, require_complete=True):
         opening=np.frombuffer(data,'<i4',cells,offset=pos).reshape(n,nd)
         origin=np.frombuffer(data,'u1',cells,offset=pos+28*cells).reshape(n,nd)
         for t,d in enumerate(dates):
+            if d in byday:
+                continue
             file=store/'open-bands'/(d+'.gz')
             if not file.exists():missing.append(d);continue
             prices={}
