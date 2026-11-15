@@ -1,0 +1,49 @@
+name: 云端更新补跑
+run-name: cloud-clock ${{ inputs.due || 'start' }}
+
+on:
+  schedule:
+    - cron: '23 20 * * *'
+  workflow_dispatch:
+    inputs:
+      due:
+        description: '启动时留空。后续检查时间由云端计时器填写。'
+        type: string
+        required: false
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: xuheng-cloud-clock
+  cancel-in-progress: false
+
+jobs:
+  start:
+    if: github.ref == 'refs/heads/main' && !github.event.repository.fork && !inputs.due
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:
+          persist-credentials: false
+      - name: 检查本轮数据并安排下一次云端核对
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 ops/cloud_clock.py
+
+  tick:
+    if: github.ref == 'refs/heads/main' && !github.event.repository.fork && inputs.due != ''
+    environment: xuheng-cloud-clock
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:
+          persist-credentials: false
+      - name: 核对云端等待时间并补跑缺失的批次
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CLOCK_DUE: ${{ inputs.due }}
+        run: python3 ops/cloud_clock.py

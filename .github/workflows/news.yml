@@ -4,6 +4,11 @@ on:
     - cron: '9 * * * *'
     - cron: '39 * * * *'
   workflow_dispatch:
+    inputs:
+      cloud_check:
+        description: '本轮已有成功采集时跳过重复抓取'
+        type: boolean
+        default: false
 
 concurrency:
   group: xuheng-news-edition
@@ -32,10 +37,13 @@ jobs:
       - name: 读取股票目录并计算快讯指标
         env:
           TUSHARE_TOKEN: ${{ secrets.TUSHARE_TOKEN }}
+          IF_DUE: ${{ github.event_name == 'schedule' || inputs.cloud_check }}
         run: |
           python3 -m venv "$RUNNER_TEMP/news-python"
           "$RUNNER_TEMP/news-python/bin/pip" install --disable-pip-version-check 'requests>=2.32.3,<3'
-          "$RUNNER_TEMP/news-python/bin/python" ops/update_news.py "$RUNNER_TEMP/xuheng-news/latest.json"
+          args=("$RUNNER_TEMP/xuheng-news/latest.json")
+          if [[ "$IF_DUE" == "true" ]]; then args+=(--if-due); fi
+          "$RUNNER_TEMP/news-python/bin/python" ops/update_news.py "${args[@]}"
       - name: 发布已校验的新闻样本
         working-directory: ${{ runner.temp }}/xuheng-news
         run: |
