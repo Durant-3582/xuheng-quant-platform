@@ -110,7 +110,8 @@ def render(store):
     reply=st.session_state.get("_desk_reply")
     if (isinstance(req,dict) and isinstance(req.get("id"),str) and len(req["id"])<=96
             and (not reply or req["id"]!=reply["id"])):
-        sync_url(req.get("route"))
+        if req.get("clientRouting") is not True:
+            sync_url(req.get("route"))
         reply=response(store,req,provider_token())
         st.session_state["_desk_reply"]=reply
     component(key="desk_request",default=None,reply=reply,initialRoute=url_route(),version=version)

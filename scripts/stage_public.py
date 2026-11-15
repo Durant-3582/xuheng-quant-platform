@@ -8,7 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 PUBLIC_FILES = (
     ".gitignore", ".streamlit/config.toml", "README.md", "requirements.txt",
     "streamlit_app.py", "static/site-id.txt", "static/full-release.json",
-    "xuheng/browser_settings/index.html", "checks/check_browser_settings.mjs",
+    "xuheng/browser_settings/index.html", "checks/check_browser_settings.mjs", "checks/check_desk_navigation.mjs",
     "ops/publish_after_close.py", "ops/cloud_history.py", "ops/upload_private.py", "ops/盘后发布.md",
     ".github/workflows/after-close.yml",
     "盘后更新行情.command",

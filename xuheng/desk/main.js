@@ -1,9 +1,10 @@
+import {ownsAddress} from "./navigation.js";
 import {ready, request} from "./bridge.js";
 import {restoreSettings} from "./restore.js";
 await ready.then(({version})=>restoreSettings(version));
 await import("./desk.js");
 let addressTimer;
-addEventListener("hashchange", () => {
+if (!ownsAddress) addEventListener("hashchange", () => {
   // The market/series request may already have synchronized this route. A local
   // page such as the portfolio form still needs a shareable host URL of its own.
   clearTimeout(addressTimer);

@@ -31,7 +31,7 @@ function ledger(area,logs){
   fill();
 }
 
-export function backtest({panel, day, settings, benchmarks, refresh, isCurrent, chart, legend}) {
+export function backtest({panel, day, remember, settings, benchmarks, refresh, isCurrent, chart, legend}) {
   const controls = select("bf", "选股规则", rules, settings.factor)
     + select("bx", "范围", markets, settings.exchange)
     + '<label>持股数 <input id="bn" type="number" min="1" max="200" required value="' + settings.count + '"></label>'
@@ -156,6 +156,7 @@ export function backtest({panel, day, settings, benchmarks, refresh, isCurrent, 
         field("bt-reset").onclick = resetRange;
         return;
       }
+      remember(sim.logs[0].entry, sim.logs.at(-1).end);
       out.innerHTML=results(sim);ledger(field("bt-log"),sim.logs);
       const rule = rules.find(([id]) => id === options.factor)[1];
       const market = markets.find(([id]) => id === options.exchange)[1];

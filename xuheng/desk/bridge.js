@@ -1,3 +1,4 @@
+import {ownsAddress,startNavigation} from "./navigation.js";
 // Each browser tab owns a queue. Streamlit widgets deliver their latest value, so
 // the next request can only be sent after Python has answered the preceding one.
 const hostOrigin = document.referrer ? new URL(document.referrer).origin : location.origin;
@@ -27,7 +28,7 @@ function sendNext() {
   }, task.timeout);
   post("streamlit:setComponentValue", {dataType:"json", value:{
     id:task.id, path:task.path, body:task.body, route:location.hash.slice(1) || "overview",
-    gzip:typeof DecompressionStream === "function"
+    clientRouting:ownsAddress, gzip:typeof DecompressionStream === "function"
   }});
 }
 
@@ -52,10 +53,10 @@ addEventListener("message", async event => {
     started = true;
     release = version.id;
     const route = initialRoute || "overview";
-    history.replaceState(null, "", location.pathname + location.search + "#" + route);
+    startNavigation(route);
     resolveReady({route,version});
     sendNext();
-  } else if (version.id !== release && !active) {
+  } else if (version.id !== release) {
     location.reload();
     return;
   }
