@@ -1,6 +1,6 @@
 // Use one browser-history entry per navigation, even when Community Cloud nests
 // the workbench in two frames. Links also work when copied or opened separately.
-const allowed=/^(overview|indices|stocks|news|factors|backtest|portfolio)(?:\/[a-zA-Z0-9_.-]{1,40})?$/;
+const allowed=/^(overview|indices|stocks|news|factors|backtest|portfolio|assistant)(?:\/[a-zA-Z0-9_.-]{1,40})?$/;
 let addressWindow;
 try {
   if (top !== window && top.location.origin === location.origin) addressWindow=top;
