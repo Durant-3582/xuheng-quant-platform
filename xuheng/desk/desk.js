@@ -83,8 +83,12 @@ function redrawAt(render,id){
 function bindPager(id,drawfn,jump){
  const buttons='[data-pager="'+id+'"]';
  document.querySelectorAll(buttons).forEach(b=>b.onclick=async()=>{
+  const pageVersion=version;
   jump(Number(b.dataset.delta));
   await drawfn();
+  // A visitor may already be typing the next search while this page is loading.
+  const active=document.activeElement;
+  if(version!==pageVersion || (active!==document.body && active!==b && active!==$("methods")))return;
   const pager=document.querySelector(buttons)?.closest(".pager");
   if(pager)focusTable(pager.previousElementSibling);
  });
