@@ -1,0 +1,24 @@
+[theme]
+base = "light"
+primaryColor = "#176552"
+backgroundColor = "#FAFBF8"
+secondaryBackgroundColor = "#EEF2EC"
+textColor = "#193736"
+font = "sans serif"
+
+[browser]
+gatherUsageStats = false
+
+[runner]
+magicEnabled = false
+
+[server]
+headless = true
+enableStaticServing = true
+
+[global]
+# Research widgets intentionally restore user inputs when switching views.
+disableWidgetStateDuplicationWarning = true
+
+[client]
+toolbarMode = "minimal"
