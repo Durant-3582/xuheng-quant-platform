@@ -6,6 +6,7 @@ from math import sqrt
 from statistics import mean, stdev
 
 from .portfolio import run, validate
+from .study_store import factor_snapshot
 
 
 CRITERIA={"return":"扣费后累计收益最高","drawdown":"最大回撤最小（月度估值）","sharpe":"月收益夏普比率最高"}
@@ -54,7 +55,7 @@ def score(result,dates,last_scheduled=None):
             "invested":any(x["held"] for x in result["months"])}
 
 
-def compare(store,rules,windows,criterion):
+def compare(store,rules,windows,criterion,snapshot=None):
     a,b,c,d=windows
     if b>=c:
         raise ValueError("样本内截止日须早于样本外起日。")
@@ -65,10 +66,12 @@ def compare(store,rules,windows,criterion):
         validate(store,rule,c,d)
     calendar_check(store,rules,a,b,"样本内")
     calendar_check(store,rules,c,d,"样本外")
+    if snapshot is None and any(rule.model == 'multi' for rule in rules):
+        snapshot = factor_snapshot(store)
     ranking=[]
     for index,rule in enumerate(rules):
         try:
-            row=score(run(store,rule,a,b),store.daily["dates"],store.manifest.get('lastScheduledSession'))
+            row=score(run(store,rule,a,b,snapshot=snapshot),store.daily["dates"],store.manifest.get('lastScheduledSession'))
         except ValueError as exc:
             raise ValueError(f"候选 {index+1} · {exc}") from exc
         ranking.append(dict(index=index,**row))

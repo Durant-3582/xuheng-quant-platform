@@ -46,12 +46,14 @@ function headlines(items) {
 
 export function newsPage({panel, wireInput, name, isCurrent}) {
   const id = k=>panel.querySelector("#news-"+k);
+  const syncPeriod = 5 * 60 * 1000;
   let edition, selected = "", generation = 0, nodes;
+  let timer, nextSync = 0, busy = false, closed = false;
   panel.innerHTML = title("新闻情绪","观察财经快讯的措辞、行业热度，以及与具体股票有关的报道。") +
     '<details class="news-help"><summary>这页在做什么？</summary>'+
     note("先看市场和行业集中讨论什么，再用股票名称或代码核对相关报道。分数表示快讯用词的正负倾向。")+'</details>'+
     '<div class="news-controls"><button id="news-refresh" class="act" type="button">刷新新闻</button>' +
-    '<span class="dim">东方财富 7×24 快讯 · 北京时间</span></div>' +
+    '<span class="dim">东方财富 7×24 快讯 · 云端每半小时采集，页面每 5 分钟同步 · 北京时间</span></div>' +
     '<p id="news-status" class="news-status" role="status"></p><div id="news-summary"></div>' +
     box("个股相关新闻",searchField("news-stock","输入股票名称或代码，例如 贵州茅台 或 600519")+
       '<div id="news-stock-result" aria-live="polite"></div>') +
@@ -82,6 +84,7 @@ export function newsPage({panel, wireInput, name, isCurrent}) {
   search.addEventListener("input",()=>{ selected=""; stockResult(); });
 
   function paint() {
+    const hoursOpen = summary.querySelector("details")?.open;
     clearNewsCharts(nodes);
     const list = edition.articles, stats = summarize(list), count = list.length;
     const share = n=>fmt(n/count*100,1)+"%";
@@ -101,6 +104,7 @@ export function newsPage({panel, wireInput, name, isCurrent}) {
         table(["行业","新闻数","情绪分","正面占比"],sectors.map(g=>[esc(g.name),String(g.count),fmt(g.sum/g.count,1),fmt(100*g.pos/g.count,1)+"%"]))+
         note("列出被至少两条快讯提及的行业，最多展示前 12 个。") : empty("本批样本没有被至少两条快讯同时提及的行业。"))+
       '<div class="two even">'+box("最正面的标题",headlines(stats.positive))+box("最负面的标题",headlines(stats.negative))+'</div>';
+    if (hoursOpen) summary.querySelector("details").open = true;
     const mine = ++generation;
     nodes = {gauge:id("gauge"),hours:id("hours"),sectors:id("sectors")};
     renderNewsCharts(nodes,stats,()=>isCurrent() && mine===generation).catch(()=>{
@@ -109,24 +113,46 @@ export function newsPage({panel, wireInput, name, isCurrent}) {
     stockResult();
   }
 
+  function schedule() {
+    clearTimeout(timer);
+    if (!closed && isCurrent() && !document.hidden && !busy) {
+      timer = setTimeout(()=>load(false), Math.max(0, nextSync - Date.now()));
+    }
+  }
+
   async function load(manual) {
+    if (busy || closed || !isCurrent()) return;
+    clearTimeout(timer);
+    busy = true;
+    nextSync = Date.now() + syncPeriod;
     refresh.disabled = true;
-    status.textContent = manual ? "正在刷新快讯…" : "正在读取已归档的新闻样本…";
+    if (manual || !edition) status.textContent = manual ? "正在刷新快讯…" : "正在读取已归档的新闻样本…";
     try {
       const data = await api("/api/news",35000,manual?{body:JSON.stringify({refresh:true})}:{});
-      if (!isCurrent()) return;
+      if (closed || !isCurrent()) return;
+      const changed = !edition || (data.checked !== edition.checked &&
+        JSON.stringify(data.articles) !== JSON.stringify(edition.articles));
       edition = data;
       const first = data.articles[0].time, last = data.articles.at(-1).time;
       status.textContent = (data.notice ? data.notice+" 正在显示上次成功的样本。 " : "")+
         "样本覆盖 "+last+" 至 "+first+" · 采集于 "+data.checked;
-      paint();
+      if (changed) paint();
     } catch (error) {
-      if (isCurrent()) status.textContent = String(error.message)+" "+(edition?"保留上次样本，可再次刷新。":"可点击「刷新新闻」重试。");
+      if (!closed && isCurrent()) status.textContent = String(error.message)+" "+(edition?"保留上次样本，可再次刷新。":"可点击「刷新新闻」重试。");
     } finally {
-      if (isCurrent()) refresh.disabled=false;
+      busy = false;
+      if (!closed && isCurrent()) refresh.disabled=false;
+      schedule();
     }
   }
   refresh.onclick=()=>load(true);
+  document.addEventListener("visibilitychange", schedule);
   load(false);
-  return ()=>{ generation++; clearNewsCharts(nodes); };
+  return ()=>{
+    closed = true;
+    generation++;
+    clearTimeout(timer);
+    document.removeEventListener("visibilitychange", schedule);
+    clearNewsCharts(nodes);
+  };
 }

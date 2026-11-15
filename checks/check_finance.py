@@ -45,8 +45,8 @@ record={'months':[{'entry':good[0][0],'end':good[-1][0],'held':1}],'main':{'curv
 assert score(record,[x[0] for x in good],'20240628')['months']==2
 assert score(record,[x[0] for x in good],'20240630')['months']==1
 seen=[]
-def restricted(s,rr,a,b):
-    assert b<'20250101';seen.append((a,b));return run(s,rr,a,b)
+def restricted(s,rr,a,b,*,snapshot=None):
+    assert snapshot is None and b<'20250101';seen.append((a,b));return run(s,rr,a,b)
 rules=[Rules(count=2),Rules(count=3)]
 with patch('xuheng.comparison.run',side_effect=restricted):
     cmp,winner=compare(s,rules,('20240101','20241231','20250101','20251231'),'return')

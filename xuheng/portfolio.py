@@ -9,6 +9,7 @@ from functools import lru_cache
 from datetime import datetime
 
 from .frames import BENCHMARKS, COL, MARKETS, MODELS, WEIGHTS, Rules, frames
+from .study_store import factor_snapshot
 
 
 def check_window(start,end,cutoff):
@@ -177,17 +178,22 @@ def valuation(book,quotes,life,day):
 
 
 @lru_cache(maxsize=20)
-def _cached_monthly_model(store,r,start,end,risk):
-    return _compute(store,r,start,end,risk)
+def _cached_monthly_model(store,r,start,end,risk,snapshot):
+    return _compute(store,r,start,end,risk,snapshot)
 
-def run(store,r:Rules,start,end,risk=False):
+def run(store,r:Rules,start,end,risk=False,snapshot=None):
+    if r.model == 'multi':
+        if snapshot is None:
+            snapshot = factor_snapshot(store)
+    else:
+        snapshot = None
     # Only shared model results on an immutable release enter this bounded cache.
     # Return a detached result so display code cannot alter another visitor's calculation.
     if getattr(store,'release_id',None) and not r.daily and r.model!='manual':
-        return deepcopy(_cached_monthly_model(store,r,start,end,risk))
-    return _compute(store,r,start,end,risk)
+        return deepcopy(_cached_monthly_model(store,r,start,end,risk,snapshot))
+    return _compute(store,r,start,end,risk,snapshot)
 
-def _compute(store,r:Rules,start,end,risk=False):
+def _compute(store,r:Rules,start,end,risk=False,snapshot=None):
     validate(store,r,start,end)
     main=Book()
     equal=main if r.weighting=="equal" else Book()
@@ -204,7 +210,7 @@ def _compute(store,r:Rules,start,end,risk=False):
     fee=r.fee/10000
     def state():
         return len(history),set().union(*(b.positions for b in books))
-    for signal,day,stop,rows,market,rebalance,pair,ordered in frames(store,r,start,end,state):
+    for signal,day,stop,rows,market,rebalance,pair,ordered in frames(store,r,start,end,state,snapshot):
         if signal>=day or day>stop or previous>=day:
             raise ValueError("研究归档的交易日期顺序异常。")
         previous=stop

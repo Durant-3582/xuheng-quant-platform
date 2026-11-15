@@ -85,8 +85,8 @@ def score_order(rows, score):
     return np.lexsort((suffix_order[ids // 1000000], ids % 1000000, -score))
 
 
-def monthly_ranks(store, venue, factor_weights, count):
-    index = edition(store)
+def monthly_ranks(store, venue, factor_weights, count, snapshot):
+    index = {'day': snapshot[0], 'files': dict(snapshot[1])}
     reader = getattr(store,'service','')
     codes = {security_id(c):c for c in store.stock_life}
     w = np.asarray(factor_weights,dtype=float)

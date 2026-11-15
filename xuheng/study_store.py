@@ -53,12 +53,10 @@ def edition(store, refresh=True):
     seed = json.loads(baseline.read_bytes()) if baseline.is_file() else None
     if not valid(seed, store.day):
         raise ArchiveError('当前行情版本没有对应的研究数据库。')
-    if seed['day'] == store.day:
-        return seed
     with lock:
         now = time.monotonic()
         old, checked = _checked.get(store.day, (seed, 0))
-        if not refresh:
+        if not refresh and old['day'] == store.day:
             return old
         if checked and now - checked < 180:
             return old
@@ -73,6 +71,18 @@ def edition(store, refresh=True):
         _checked.clear()
         _checked[store.day] = old, now
         return old
+
+
+def factor_snapshot(store):
+    index = edition(store)
+    panels = tuple(sorted((key, digest) for key, digest in index['files'].items() if key.startswith('panel/')))
+    if not panels:
+        raise ArchiveError('多因子研究库暂未发布可用的月末数据。')
+    return index['day'], panels
+
+
+def snapshot_digest(snapshot):
+    return hashlib.sha256(json.dumps(snapshot, separators=(',', ':')).encode()).hexdigest()
 
 
 def content(index, key, reader='', directory=None):

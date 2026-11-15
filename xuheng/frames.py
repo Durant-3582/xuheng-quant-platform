@@ -132,7 +132,7 @@ class DailyBlock:
         return rows
 
 
-def frames(store, rule, start, end, book_state):
+def frames(store, rule, start, end, book_state, factor_snapshot=None):
     warm=getattr(store,'prefetch',None)
     if warm:
         meta=['opening-execution','research/'+store.day+'/days-index']
@@ -144,7 +144,7 @@ def frames(store, rule, start, end, book_state):
     dates,codes=base["dates"],base["codes"]
     if rule.model=="multi":
         from .factor_studies import monthly_ranks
-        multi_ranks=monthly_ranks(store,rule.exchange,rule.factor_weights,rule.count)
+        multi_ranks=monthly_ranks(store,rule.exchange,rule.factor_weights,rule.count,factor_snapshot)
     value=store.supplement("value") if rule.model=="pb" else None
     need_proxy=rule.bench not in ("000300.SH","000001.SH")
     bench=store.supplement("bench") if need_proxy else None

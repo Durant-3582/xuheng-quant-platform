@@ -11,6 +11,7 @@ from .comparison import compare
 from .details import extra
 from .frames import Rules
 from .portfolio import check_window, run
+from .study_store import factor_snapshot, snapshot_digest
 
 BAR_FIELDS = ("day", "open", "high", "low", "close", "pre_close", "pct", "volume", "amount")
 
@@ -153,22 +154,31 @@ def portfolio(store, body, key):
                      "symbols":common.get("symbols",[]) if manual else [],
                      "weights":(common.get("weights",[]) if manual else candidate.get("weights",[])) if candidate["weighting"]=="manual" else []}
             setups.append(setup)
-        ranked, winner = compare(store, [parse_rules(s) for s in setups], windows, criterion)
+        parsed = [parse_rules(s) for s in setups]
+        snapshot = factor_snapshot(store) if any(rule.model == 'multi' for rule in parsed) else None
+        ranked, winner = compare(store, parsed, windows, criterion, snapshot)
         ranking = []
         for pos, row in enumerate(ranked, 1):
             metrics = {"from":row["start"],"to":row["end"],"total":row["return"],"dd":row["drawdown"],
                        "completeMonths":row["months"],"invested":row["invested"],"sharpe":row["sharpe"]}
             ranking.append(dict(index=row["index"], rank=pos if row[criterion] is not None else None, metrics=metrics))
         rules = setups[winner] if winner is not None else None
-        receipt = seal(rules, "winner", release(store), key) if rules else None
+        signed = {"rules":rules, "factorSnapshot":snapshot_digest(snapshot)} if snapshot else rules
+        receipt = seal(signed, "winner", release(store), key) if rules else None
         return dict(day=store.day, ranking=ranking, winner=winner, rules=rules, receipt=receipt)
     if action not in ("lock", "test", "review") or set(body) != {"action","token"}:
         raise ValueError("请使用已锁定的规则和区间。")
-    data = unseal(body["token"], "winner" if action=="lock" else "locked", release(store), key)
+    signed = unseal(body["token"], "winner" if action=="lock" else "locked", release(store), key)
+    data = signed.get("rules", signed)
+    snapshot = None
+    if "factorSnapshot" in signed or data.get("model") == "multi":
+        snapshot = factor_snapshot(store)
+        if signed.get("factorSnapshot") != snapshot_digest(snapshot):
+            raise SnapshotChanged("多因子研究数据已更新，请重新比较参数并锁定。")
     if action=="lock":
-        return dict(token=seal(data,"locked",release(store),key))
+        return dict(token=seal(signed,"locked",release(store),key))
     window = "test" if action=="test" else "train"
-    return dict(day=store.day, rules=data, result=run(store,parse_rules(data),data[window+"From"],data[window+"To"],risk=True))
+    return dict(day=store.day, rules=data, result=run(store,parse_rules(data),data[window+"From"],data[window+"To"],risk=True,snapshot=snapshot))
 
 
 def live(store, query, token):
