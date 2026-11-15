@@ -14,7 +14,7 @@ import streamlit as st
 from streamlit.components.v1 import declare_component
 
 from .desk_api import dispatch, release, SnapshotChanged
-from .ui_common import provider_token
+from .ui_common import conf, provider_token
 
 # Streamlit allows browsers to cache component scripts. A new asset directory
 # URL lets existing visitors receive HTML, CSS and all modules as one revision.
@@ -27,7 +27,7 @@ for asset in sorted(desk_dir.iterdir()):
 component = declare_component("v"+assets.hexdigest()[:16]+"_market_desk", path=str(desk_dir))
 news_plots = declare_component("news_plotly_"+plotly.__version__.replace(".", "_"),
                                path=str(Path(plotly.__file__).parent / "package_data"))
-ROUTES = {"overview", "indices", "stocks", "news", "factors", "backtest", "portfolio"}
+ROUTES = {"overview", "indices", "stocks", "news", "factors", "backtest", "portfolio", "assistant"}
 SUBPAGES = {"overview":{"rotation","breadth"}, "factors":{"multi","test"}, "stocks":{"screen"}, "portfolio":{"research","manual"}}
 HOST_STYLE = """<style>
 [data-testid="stHeader"],[data-testid="stToolbar"],[data-testid="stDecoration"],[data-testid="stStatusWidget"],
@@ -88,7 +88,12 @@ def response(store, req, token):
             or body is not None and len(json.dumps(body,ensure_ascii=True))>65536):
         return {"id":identifier,"error":"研究查询格式无效。"}
     try:
-        data=dispatch(store,path,body,signing_key(token),token)
+        if path == "/api/assistant":
+            from .assistant import handle
+            state = st.session_state.setdefault("research_assistant", {})
+            data = handle(store, body, state, conf("DEEPSEEK_API_KEY"), token)
+        else:
+            data=dispatch(store,path,body,signing_key(token),token)
         if req.get("gzip") is True:
             raw=json.dumps(data,ensure_ascii=False,separators=(",",":"),allow_nan=False).encode()
             if len(raw)>40000:
