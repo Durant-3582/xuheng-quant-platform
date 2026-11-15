@@ -21,7 +21,7 @@ python ingest/build.py
 streamlit run streamlit_app.py
 ```
 
-**数据更新：** 管理员在工作目录运行 `python ops/publish_after_close.py`。它根据已发布的交易日，调用 Tushare 的 `daily`、`index_daily`、`daily_basic`、`stk_limit` 等端点增量补库，校验全部数据后再切换网站读取的版本。重复运行不会重复发布。同一只证券的在线报价查询不会改写全市场回测。部署操作详见源码包中的 `ops/盘后发布.md`。
+**数据更新**　云端盘后任务每天按北京时间 19:17 和 22:17 检查交易日历。线上已是最新交易日会直接结束。需要更新时，它从正式库读取已归档的历史，通过 Tushare 补入新行情、估值和限价，再校验和发布。管理员也可以从本机运行 `python ops/publish_after_close.py`。[查看运行记录](https://github.com/Durant-3582/xuheng-quant-platform/actions/workflows/after-close.yml)。
 
 **公开课程入口**　访客在普通浏览器打开[序衡](https://xuheng-quant-lab-3582.streamlit.app/)即可使用。Streamlit Community Cloud 直接运行 GitHub 仓库根目录的 `streamlit_app.py`。查历史、筛选和回测按需读取本项目归档的交易数据。点击查询最新日线时，服务器直接调用 Tushare。服务器可以在 Tushare 暂时不可用时继续提供已归档的数据。
 
