@@ -1,4 +1,4 @@
-import {box,date,offerRefresh,requireDay,esc,fmt,note,pct,select,table} from "./lab.js";
+import {box,date,DataDateError,offerRefresh,requireDay,esc,fmt,note,pct,select,table} from "./lab.js";
 import {editorMarkup,holdingsEditor} from "./holdings.js";
 import {defaults as defaultMix,currentRule,readMix,totalText,validMix,weightInputs} from "./multifactor.js";
 import {monthlyFrequency} from "./portfolio-view.js";
@@ -218,7 +218,16 @@ export function comparisonTab(ctx){
         show("pm-out",outside,res.rules);feedback("样本外已完成 · "+saveResultText(res.rules));
       }
       keep();
-    }catch(e){if(current())feedback(e.message,true);}
+    }catch(e){
+      if(!current())return;
+      if(e instanceof DataDateError){
+        removeListeners();state.lock=null;invalidated();state.needsComparison=true;keep();
+        comparisonTab(ctx);
+        const message=el("pm-status");
+        message.textContent=e.message;message.classList.add("error");
+        offerRefresh(message,e,ctx.refresh);
+      }else feedback(e.message,true);
+    }
     finally{if(current()){busy="";controls();}}
   }
   el("pm-lock").onclick=()=>step("lock");el("pm-test").onclick=()=>step("test");el("pm-review").onclick=()=>step("review");
