@@ -1,0 +1,53 @@
+name: A 股盘后更新
+
+on:
+  schedule:
+    - cron: '17 11,14 * * *'
+  workflow_dispatch:
+    inputs:
+      verify_restore:
+        description: '即使没有新交易日，也在空的云端机器核验行情基线'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: xuheng-post-close-production
+  cancel-in-progress: false
+
+jobs:
+  update:
+    if: github.ref == 'refs/heads/main' && !github.event.repository.fork
+    runs-on: ubuntu-24.04
+    timeout-minutes: 320
+    env:
+      PYTHONUNBUFFERED: '1'
+      OPENBLAS_NUM_THREADS: '1'
+      OMP_NUM_THREADS: '1'
+    steps:
+      - name: 读取正式分支
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          persist-credentials: false
+      - name: 安装取数依赖
+        run: |
+          python3 -m venv "$RUNNER_TEMP/xuheng-python"
+          grep -E '^(numpy|requests)[<>=]' requirements.txt > "$RUNNER_TEMP/xuheng-requirements.txt"
+          "$RUNNER_TEMP/xuheng-python/bin/pip" install --disable-pip-version-check -r "$RUNNER_TEMP/xuheng-requirements.txt"
+          echo "$RUNNER_TEMP/xuheng-python/bin" >> "$GITHUB_PATH"
+      - name: 校验交易日并发布完整行情
+        env:
+          TUSHARE_TOKEN: ${{ secrets.TUSHARE_TOKEN }}
+          VERIFY_RESTORE: ${{ inputs.verify_restore }}
+        run: |
+          if [[ -z "$TUSHARE_TOKEN" ]]; then
+            echo "::error::请在本仓库的 Actions secrets 中设置 TUSHARE_TOKEN。"
+            exit 1
+          fi
+          args=(--cloud --rpm 120 --threads 4)
+          if [[ "$VERIFY_RESTORE" == "true" ]]; then
+            args+=(--verify-restore)
+          fi
+          python ops/publish_after_close.py "${args[@]}"
