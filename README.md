@@ -27,4 +27,4 @@ streamlit run streamlit_app.py
 
 **口径：** 程序按设定费率扣费。无开盘报价不交易；有官方盘前限价时按对应方向判断能否成交，其余用历史常见涨跌幅作近似。缺失收盘报价沿用末次估值，退市残余单独披露。月度净值的回撤无法反映全部月内波动。TB 根据正超额截距与残差方差的比值分配只做多的主动权重，缺少可用估计时留现金。指数价格回溯记录与发布后的可投资比较区分处理。不模拟逐笔撮合和成交量容量。
 
-**核验：** `checks/check_finance.py` 核对手算收益、交易约束、月度指标、Beta 和样本内外边界。`checks/check_ui.py` 操作六个页面、自定义交易日、权重、参数冻结等；两项测试均可使用本地真实数据、断开外部 API 执行。
+**核验**　`checks/check_finance.py` 核对交易、费用、Beta 和样本边界。`checks/check_ui.py` 通过实际 Streamlit 入口检验消息往返与六栏导航。`checks/check_controls.py` 和 `checks/check_research_ui.py` 检验组合锁定、不同调仓方式及图表数据，默认使用本地验收库，可断开外部 API 运行。

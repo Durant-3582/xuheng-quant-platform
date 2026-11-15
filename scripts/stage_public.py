@@ -22,6 +22,11 @@ def stage(out):
     for folder in ("xuheng", "ingest", "checks", "scripts"):
         files.extend(sorted((ROOT / folder).glob("*.py")))
 
+    # The standalone research interface is served with the Streamlit app.
+    desk = ROOT / "xuheng" / "desk"
+    for ext in ("*.html", "*.css", "*.js"):
+        files.extend(sorted(desk.glob(ext)))
+
     secrets = []
     for name in ("TUSHARE_TOKEN", "XUHENG_ARCHIVE_WRITE_KEY", "XUHENG_ARCHIVE_TOKEN"):
         if os.environ.get(name):
