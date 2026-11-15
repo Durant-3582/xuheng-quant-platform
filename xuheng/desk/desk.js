@@ -203,8 +203,11 @@ async function security(ticket){
  };
  if(!isIndex&&showReportsOnArrival(code)){
    const disclosure=$("extra-data");
-   disclosure.click();
-   requestAnimationFrame(()=>{if(disclosure.isConnected)disclosure.closest("section").scrollIntoView({block:"start"});});
+   const section=disclosure.closest("section");
+   P.querySelector(".metrics").closest("section").after(section);
+   disclosure.onclick().then(()=>{
+     if(disclosure.isConnected)section.scrollIntoView({block:"start"});
+   });
  }
  if(isIndex){
  $("second").onchange=e=>{secondBench=e.target.value;redrawAt(route,"second");};const drawList=()=>{$("listing").innerHTML=indexDirectory();bindPager("catalog",drawList,d=>indPage+=d);};drawList();
