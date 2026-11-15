@@ -9,6 +9,7 @@ from pathlib import Path
 import re
 import secrets
 
+import plotly
 import streamlit as st
 from streamlit.components.v1 import declare_component
 
@@ -24,7 +25,9 @@ for asset in sorted(desk_dir.iterdir()):
         assets.update(asset.name.encode())
         assets.update(asset.read_bytes())
 component = declare_component("v"+assets.hexdigest()[:16]+"_market_desk", path=str(desk_dir))
-ROUTES = {"overview", "indices", "stocks", "factors", "backtest", "portfolio"}
+news_plots = declare_component("news_plotly_"+plotly.__version__.replace(".", "_"),
+                               path=str(Path(plotly.__file__).parent / "package_data"))
+ROUTES = {"overview", "indices", "stocks", "news", "factors", "backtest", "portfolio"}
 HOST_STYLE = """<style>
 [data-testid="stHeader"],[data-testid="stToolbar"],[data-testid="stDecoration"],[data-testid="stStatusWidget"],
 [data-testid="stSidebar"],[data-testid="stBottom"],footer,#MainMenu {display:none!important}
@@ -114,4 +117,5 @@ def render(store):
             sync_url(req.get("route"))
         reply=response(store,req,provider_token())
         st.session_state["_desk_reply"]=reply
-    component(key="desk_request",default=None,reply=reply,initialRoute=url_route(),version=version)
+    component(key="desk_request",default=None,reply=reply,initialRoute=url_route(),version=version,
+              newsPlots=news_plots.name)
