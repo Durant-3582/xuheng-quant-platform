@@ -1,0 +1,44 @@
+name: 新闻情绪更新
+on:
+  schedule:
+    - cron: '9,39 * * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: xuheng-news-edition
+  cancel-in-progress: false
+
+jobs:
+  update:
+    if: github.ref == 'refs/heads/main' && !github.event.repository.fork
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+      - name: 准备独立新闻数据分支
+        run: |
+          directory="$RUNNER_TEMP/xuheng-news"
+          if git ls-remote --exit-code --heads origin refs/heads/news-data > /dev/null; then
+            git fetch --depth=1 origin refs/heads/news-data
+            git worktree add --detach "$directory" FETCH_HEAD
+          else
+            status=$?
+            if [[ "$status" != 2 ]]; then exit "$status"; fi
+            git worktree add --orphan -b news-data "$directory"
+          fi
+      - name: 读取股票目录并计算快讯指标
+        env:
+          TUSHARE_TOKEN: ${{ secrets.TUSHARE_TOKEN }}
+        run: |
+          python3 -m venv "$RUNNER_TEMP/news-python"
+          "$RUNNER_TEMP/news-python/bin/pip" install --disable-pip-version-check 'requests>=2.32.3,<3'
+          "$RUNNER_TEMP/news-python/bin/python" ops/update_news.py "$RUNNER_TEMP/xuheng-news/latest.json"
+      - name: 发布已校验的新闻样本
+        working-directory: ${{ runner.temp }}/xuheng-news
+        run: |
+          git add -- latest.json
+          if git diff --cached --quiet; then exit 0; fi
+          git -c user.name='github-actions[bot]' -c user.email='github-actions[bot]@users.noreply.github.com' commit -m 'Update news sentiment sample'
+          git push origin HEAD:refs/heads/news-data
