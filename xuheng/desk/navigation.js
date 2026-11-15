@@ -10,8 +10,8 @@ export const ownsAddress=Boolean(addressWindow);
 function fromAddress(url) {
   let page=url.searchParams.get("page") || "overview";
   if(page==="strategies")page="backtest";
-  const detail=page==="portfolio"?url.searchParams.get("tab"):
-    ["stocks","indices"].includes(page)?url.searchParams.get("symbol"):null;
+  const detail=url.searchParams.get("tab") || (
+    ["stocks","indices"].includes(page)?url.searchParams.get("symbol"):null);
   const route=detail?page+"/"+detail:page;
   return allowed.test(route)?route:"overview";
 }
@@ -26,8 +26,8 @@ function publicURL(route) {
   }
   const [page,detail]=route.split("/");
   for(const k of ["page","tab","symbol"])url.searchParams.delete(k);
-  if(page!=="overview")url.searchParams.set("page",page==="backtest"?"strategies":page);
-  if(detail)url.searchParams.set(page==="portfolio"?"tab":"symbol",detail);
+  if(page!=="overview" || detail)url.searchParams.set("page",page==="backtest"?"strategies":page);
+  if(detail)url.searchParams.set(["stocks","indices"].includes(page)&&detail!=="screen"?"symbol":"tab",detail);
   return url;
 }
 
