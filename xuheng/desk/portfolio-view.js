@@ -1,4 +1,4 @@
-import {api, box, date, esc, fmt, line, note, pct, select, signed, table, valuationNote,executionNote} from "./lab.js";
+import {api, box, date, esc, fmt, focusTable, line, note, pct, select, signed, table, valuationNote,executionNote} from "./lab.js";
 
 import {sectorTable} from "./holdings.js";
 
@@ -67,8 +67,8 @@ function bindLedger(id,data,r){
       +note("实持候选股是本次入选且期末仍持有的股票；全部持仓还包括未能卖出的旧仓。")+ '<div class="pager"><span>共 '+records.length+' 条 · 第 '+(Math.floor(first/40)+1)+' / '+Math.max(1,Math.ceil(records.length/40))+' 页</span><div><button type="button" class="quiet" data-prev '+(!first?"disabled":"")+'>上一页</button><button type="button" class="quiet" data-next '+(end<=40?"disabled":"")+'>下一页</button></div></div>';
     const toggle=area.querySelector("[data-only]");
     if(toggle)toggle.onchange=()=>{onlyRebalance=toggle.checked;first=0;fill();};
-    area.querySelector("[data-prev]").onclick=()=>{first=Math.max(0,first-40);fill();};
-    area.querySelector("[data-next]").onclick=()=>{if(end>40){first+=40;fill();}};
+    area.querySelector("[data-prev]").onclick=()=>{first=Math.max(0,first-40);fill();focusTable(area);};
+    area.querySelector("[data-next]").onclick=()=>{if(end>40){first+=40;fill();focusTable(area);}};
   }
   details.ontoggle=()=>{if(details.open&&!area.hasChildNodes())fill();};
 }
@@ -97,4 +97,11 @@ export function cadenceFields(value,days){
 }
 export function numberList(text){
   return text.trim()?text.trim().split(/[,，、;；\s]+/).filter(Boolean).map(Number):[];
+}
+
+
+export function weightError(weights,count){
+  if(weights.length!==count || weights.some(w=>!Number.isFinite(w)||w<0||w>100))
+    return "请为每只股票或每个名次填写 0 至 100% 的权重。";
+  return weights.reduce((a,b)=>a+b,0)>100.0000001?"目标权重合计超过 100%，请调低比例。":"";
 }
