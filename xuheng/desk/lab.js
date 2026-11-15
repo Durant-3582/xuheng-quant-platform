@@ -61,7 +61,7 @@ export function draw(id,traces){
  return ()=>o.disconnect();
 }
 export class DataDateError extends Error{
- constructor(){super("页面与行情库的交易日不一致，请刷新行情后重试。");}
+ constructor(message){super(message || "页面与行情库的交易日不一致，请刷新行情后重试。");}
 }
 export function requireDay(actual,expected){if(actual!==expected)throw new DataDateError();}
 export function offerRefresh(container,error,refresh){
@@ -73,7 +73,7 @@ export async function api(path,timeout=45000,settings={}){
  try {
    return await callPython(path, settings.body ? JSON.parse(settings.body) : null, timeout);
  } catch (error) {
-   if (error.code === "snapshot_changed") throw new DataDateError();
+   if (error.code === "snapshot_changed") throw new DataDateError(error.message);
    throw error;
  }
 }
