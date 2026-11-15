@@ -84,3 +84,26 @@ html{overflow-y:auto}
 #news-stock-result .tbl td:nth-child(2){text-align:left;white-space:normal;min-width:10em}
 .news-charts .box{overflow:hidden}
 @media(max-width:760px){.two.news-charts{grid-template-columns:minmax(0,1fr)}}
+
+.diagnosis-control{margin:0}
+.diagnosis-asof{color:var(--muted);font-size:12px;margin:0 0 10px}
+#stock-diagnosis details{border-top:1px solid var(--line)}
+#stock-diagnosis summary{list-style:none;display:grid;grid-template-columns:6.5em minmax(0,1fr) auto;gap:8px 15px;align-items:baseline;padding:12px 2px;cursor:pointer}
+#stock-diagnosis summary::-webkit-details-marker{display:none}
+#stock-diagnosis summary:hover{background:#f6f8f4}
+#stock-diagnosis summary:focus-visible{outline:2px solid var(--green);outline-offset:1px}
+.diagnosis-title{color:var(--muted);font-size:13px}
+#stock-diagnosis summary strong{font-weight:600;line-height:1.5}
+.diagnosis-toggle{color:var(--green);font-size:12px;white-space:nowrap}
+.diagnosis-toggle span:last-child,#stock-diagnosis details[open] .diagnosis-toggle span:first-child{display:none}
+#stock-diagnosis details[open] .diagnosis-toggle span:last-child{display:inline}
+.diagnosis-evidence{padding:0 2px 14px}
+.diagnosis-evidence .note{margin:3px 0 8px}
+.diagnosis-data .tbl{max-height:17rem;overflow:auto}
+.diagnosis-data th{position:sticky;top:0;background:#f4f6f2;z-index:1}
+.diagnosis-data th,.diagnosis-data td{font-size:12px}
+@media(max-width:620px){
+ #stock-diagnosis summary{grid-template-columns:minmax(0,1fr) auto;gap:1px 8px}
+ #stock-diagnosis summary strong{grid-column:1/-1;grid-row:2}
+ .diagnosis-toggle{grid-column:2;grid-row:1}
+}
