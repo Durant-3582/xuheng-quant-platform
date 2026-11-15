@@ -9,6 +9,7 @@ from unittest.mock import MagicMock, patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from xuheng import news
 from xuheng.news_store import NewsCache, checked, read_file, write_file
+from ops import update_news
 
 store = SimpleNamespace(catalog={
     "600519.SH": [None, "贵州茅台", "stock"], "000001.SZ": [None, "平安银行", "stock"],
@@ -57,4 +58,16 @@ with tempfile.TemporaryDirectory() as folder:
     recovered = NewsCache(path)
     with patch("xuheng.news_store.archive_edition", return_value=edition):
         assert recovered.get(store)["articles"] == [item] and read_file(path) == edition
+    first = {**edition, "checked": "2026-11-15 09:09:00"}
+    second = {**edition, "checked": "2026-11-15 09:39:00"}
+    older_feed = {**second, "checked": "2026-11-15 10:09:00",
+                  "articles": [{**item, "time": "2026-11-15 08:00:00"}]}
+    write_file(path, first)
+    with (patch.object(update_news, "Archive", return_value=store),
+          patch.object(update_news.time, "sleep") as sleep,
+          patch.object(update_news, "fetch", side_effect=[news.NewsError("暂时无法取数"), second, older_feed])):
+        update_news.update(path, database=path.parent)
+        assert read_file(path) == second and sleep.call_count == 1
+        update_news.update(path, database=path.parent)
+        assert read_file(path) == second
 print("PASS news scoring, source validation, identity, deduplication, and stale-cache recovery")
