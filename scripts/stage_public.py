@@ -30,7 +30,7 @@ def stage(out):
         files.extend(sorted(desk.glob(ext)))
 
     secrets = []
-    for name in ("TUSHARE_TOKEN", "DEEPSEEK_API_KEY", "XUHENG_ARCHIVE_WRITE_KEY", "XUHENG_ARCHIVE_TOKEN"):
+    for name in ("TUSHARE_TOKEN", "DEEPSEEK_API_KEY", "AI_CHAT_PASSWORD", "XUHENG_ARCHIVE_WRITE_KEY", "XUHENG_ARCHIVE_TOKEN"):
         if os.environ.get(name):
             secrets.append(os.environ[name].strip().encode())
     for name in (".private/tushare-token", ".streamlit/.local-course-pass"):
