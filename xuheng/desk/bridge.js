@@ -54,7 +54,7 @@ addEventListener("message", async event => {
     release = version.id;
     const route = initialRoute || "overview";
     startNavigation(route);
-    resolveReady({route,version});
+    resolveReady({route,version,newsPlots:event.data.args.newsPlots});
     sendNext();
   } else if (version.id !== release) {
     location.reload();
