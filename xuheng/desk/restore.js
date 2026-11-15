@@ -1,10 +1,18 @@
 // Import visitor preferences from the first independent Streamlit interface once.
-export function restoreSettings({catalog,day,sample}) {
+export function restoreSettings({id,catalog,day,sample}) {
   function copy(storage, key, value) {
     if (storage.getItem(key) === null && value !== undefined) storage.setItem(key, JSON.stringify(value));
   }
   try {
     const read = (s,k) => JSON.parse(s.getItem(k));
+    const releaseKey="xuheng.desk.release";
+    const priorRelease=sessionStorage.getItem(releaseKey);
+    const studyKey="xuheng.portfolio-comparison.v2";
+    const study=read(sessionStorage,studyKey);
+    if(study?.draft && ((priorRelease && priorRelease!==id) || (study.assessment?.day && study.assessment.day!==day))){
+      sessionStorage.setItem(studyKey,JSON.stringify({draft:study.draft}));
+    }
+    sessionStorage.setItem(releaseKey,id);
     const roster = read(localStorage,"xuheng.independent.holdings.v1");
     if (Array.isArray(roster)) {
       copy(localStorage,"xuheng.positions.v1",roster);
