@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import secrets
 import sys
+import tempfile
 from unittest.mock import patch
 
 from streamlit.testing.v1 import AppTest
@@ -71,4 +72,14 @@ with patch("requests.sessions.Session.request",side_effect=AssertionError("unexp
     assert app.query_params["tab"]==["research"] and app.query_params["tracking"]==["preserve-me"]
     browser("/route","overview")
     assert "page" not in app.query_params and "symbol" not in app.query_params and "tab" not in app.query_params
-print("PASS: seven independent desk routes, news refresh, gzip, market data, portfolio results, deep links and widget reruns.")
+from xuheng import desk_host
+with tempfile.TemporaryDirectory() as temp:
+    assets = Path(temp)
+    script = assets / "view.js"
+    script.write_text("version A")
+    with patch.object(desk_host, "declare_component", side_effect=lambda name, path: name) as register:
+        first = desk_host.current_desk(assets)
+        assert desk_host.current_desk(assets) == first and register.call_count == 1
+        script.write_text("version B")
+        assert desk_host.current_desk(assets) != first and register.call_count == 2
+print("PASS: desk routes, news refresh, AI access, gzip, market data, portfolios, deep links, and hot asset deployments.")
