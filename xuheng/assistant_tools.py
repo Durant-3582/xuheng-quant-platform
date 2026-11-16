@@ -18,9 +18,34 @@ def tool(name, description, properties, required):
                            "properties": properties, "required": required}}}
 
 
-SYMBOL = field("用户提供的证券名称、代码或前文已确认的证券。六位代码有歧义时询问全代码。")
+SYMBOL = field("要核对的证券名称或代码，可以来自用户、你的研究判断或选股结果。六位代码有歧义时用全代码。")
 DAY = field("指定日期 YYYYMMDD。")
+FACTOR_LABELS = {"mom":"60 日动量（%）","vol":"20 日年化波动率（%）","pb":"市净率（倍）",
+                 "roe":"最近年报 ROE（%）","pe":"滚动市盈率（倍）","turn":"当日换手率（%）"}
+DEFAULT_WEIGHTS = {"mom":25,"pb":40,"roe":35}
+SORT_LABELS = {"revenue":"营业总收入同比从高到低","profit":"归母净利润同比从高到低","roe":"ROE 从高到低",
+               "gross":"毛利率从高到低","pe":"正滚动市盈率从低到高","debt":"资产负债率从低到高"}
+VENUES = {"ALL":"沪深北 A 股","SH":"沪市 A 股","SZ":"深市 A 股","BJ":"北交所 A 股"}
+SELECTION = {
+    "venue": field("股票池，默认沪深北全部 A 股。", enum=list(VENUES)),
+    "industry": field("可选，按股票目录行业在全池中先筛后排，例如银行、白酒、半导体。"),
+    "as_of": field("仅当用户指定信号日时填写。工具提供最近完整研究截面，不以当前数据回填历史。"),
+    "limit": {"type":"integer","minimum":1,"maximum":25,"description":"每页股票数，默认 5，可翻页。"},
+    "page": {"type":"integer","minimum":1,"maximum":10001,"description":"结果页，从 1 开始。"},
+}
 TOOLS = [
+    tool("rank_stocks","从全市场或指定行业选股、推荐股票并比较候选。无需预先知道股票代码。"
+         "可以自行设计权重，低波动、低正 PB、低正 PE 优先，动量、年报 ROE、换手按高值优先。"
+         "省略权重使用网页默认的低 PB 40%、年报 ROE 35%、60 日动量 25%。",
+         {**SELECTION, "weights":{"type":"object","description":"非零因子权重合计 100，各项可省略。",
+          "additionalProperties":False,"properties":{k:{"type":"number","minimum":0,"maximum":100,
+          "description":label} for k,label in FACTOR_LABELS.items()}}}, []),
+    tool("screen_financials","按已披露财报筛选和推荐 A 股，可设盈利能力和负债门槛，按增长、盈利或估值排序。"
+         "未给门槛就不设门槛，默认用最普遍的同一报告期，可指定季末或各公司最近一期。",
+         {**SELECTION, "period":field("YYYYMMDD 季末，或 latest 表示各公司最近披露，省略采用共同报告期。"),
+          "min_roe":{"type":"number","description":"累计 ROE 下限（%），10 代表 10%。"},
+          "max_debt":{"type":"number","minimum":0,"maximum":1000,"description":"资产负债率上限（%）。"},
+          "sort":field("排序指标，默认营业总收入同比。",enum=list(SORT_LABELS))}, []),
     tool("security_data", "通过 Tushare MCP 查一只股票或指数的未复权日线，或一只股票的历史估值。"
          "给定某天时只填 end；最新时省略起止日期；明确区间可查最多31个自然日。多证券分别调用。",
          {"symbol": SYMBOL, "dataset": field("行情或估值", enum=["prices", "valuation"]),
@@ -38,7 +63,9 @@ TOOLS = [
           "cadence": field("期初或每月配权", enum=["hold", "months"]),
           "fee_bps": {"type": "number", "description": "单边费率（基点）"}, "benchmark": SYMBOL},
          ["symbols", "start", "end", "weighting", "cadence", "fee_bps"]),
-    tool("clarify", "问题缺少关键信息、有歧义、超出可查范围或仅需解释本平台概念时使用。", {}, []),
+    tool("clarify", "自由讨论研究思路、解释概念或询问必要的澄清时，可在 reply 中直接回答。"
+         "推荐具体股票、报告市场数值时先用对应的数据工具。", {
+             "reply":field("不需要行情事实支撑的分析、设想或澄清问题。", maxLength=8000)}, []),
 ]
 SCHEMAS = {t["function"]["name"]: t["function"]["parameters"] for t in TOOLS}
 LABELS = {"ts_code": "证券代码", "trade_date": "交易日", "ann_date": "公告日", "end_date": "报告期",
@@ -93,6 +120,64 @@ def resolve(store, value):
 
 def evidence(source, endpoint, scope, rows, note=""):
     return {"source": source, "endpoint": endpoint, "scope": scope, "rows": rows, "note": note}
+
+
+def stock_selection(name, p, store):
+    from .factor_studies import analyze
+
+    venue = p.get("venue", "ALL")
+    size, page = p.get("limit", 5), p.get("page", 1)
+    industry = p.get("industry", "").strip()
+    query = {"venue": "" if venue == "ALL" else venue, "industry": industry, "pageSize": size, "page": page-1}
+    if "as_of" in p:
+        query["asOfDate"] = compact(day(p["as_of"]))
+    ranked = name == "rank_stocks"
+    if ranked:
+        weights = p.get("weights", DEFAULT_WEIGHTS)
+        query.update(action="rank", weights=weights)
+    else:
+        period = p.get("period", "common")
+        if period not in ("common", "latest"):
+            period = compact(day(period))
+        order = p.get("sort", "revenue")
+        query.update(action="screen", period=period, sort=order, minROE=p.get("min_roe"), maxDebt=p.get("max_debt"))
+    data = analyze(store, query)
+    coverage = VENUES[venue] + (" · "+industry if industry else "")
+    scope = f"{day(data['cutoff']).isoformat()} · {coverage} · 当日有报价 {data['pool']} 只，入选范围 {data['total']} 只"
+    if ranked:
+        rule = "、".join(f"{FACTOR_LABELS[k].partition('（')[0]} {weights[k]:g}%" for k in data["keys"])
+        scope += " · 因子权重为"+rule
+        note = "仅纳入所选因子齐备的股票。综合分为同一股票池的百分位加权平均，满分 100。"
+    else:
+        report = data["period"]
+        scope += " · "+("各公司最近披露" if report=="latest" else day(report).isoformat()+" 报告期")+" · "+SORT_LABELS[order]
+        if "min_roe" in p:
+            scope += f" · ROE ≥ {p['min_roe']:g}%"
+        if "max_debt" in p:
+            scope += f" · 资产负债率 ≤ {p['max_debt']:g}%"
+        note = "ROE 为报告期累计值，滚动市盈率取研究截止日。缺少筛选或排序字段的公司不进入排名。"
+    rows = []
+    if data["page"] == page-1:
+        for rank, result in enumerate(data["rows"], 1+(page-1)*size):
+            code = result[0]
+            security = store.catalog[code]
+            row = {"排名":rank, "证券代码":code, "证券名称":security[1], "行业":security[4]}
+            if ranked:
+                _, score, values, percentiles, annual = result
+                row["综合分"] = round(score, 4)
+                for key, value, percentile in zip(data["keys"], values, percentiles):
+                    row[FACTOR_LABELS[key]] = value
+                    row[FACTOR_LABELS[key].partition("（")[0]+"百分位分"] = round(percentile, 4)
+                if annual:
+                    row["年报报告期"], row["年报公告日"] = day(annual[0]).isoformat(), day(annual[1]).isoformat()
+            else:
+                values = result[1]
+                row.update({"报告期":day(values[0]).isoformat(), "公告日":day(values[1]).isoformat(),
+                            "ROE（%）":values[3], "毛利率（%）":values[4], "资产负债率（%）":values[5],
+                            "营业总收入同比（%）":values[6], "归母净利润同比（%）":values[7], "滚动市盈率（倍）":values[8]})
+            rows.append(row)
+    scope += f" · 第 {page} 页，每页 {size} 只"
+    return evidence("序衡研究库（Tushare）", "多因子选股" if ranked else "财务条件选股", scope, rows, note)
 
 
 def number(value):
@@ -218,14 +303,18 @@ def execute(name, p, store, client):
         raise ValueError("查询参数不完整或当前不支持这项查询。")
     for key, value in p.items():
         schema = spec["properties"][key]
-        if schema["type"] == "string" and (not isinstance(value, str) or len(value) > 64):
+        if schema["type"] == "string" and (not isinstance(value, str) or len(value) > schema.get("maxLength",64)):
             raise ValueError("查询字段格式无效。")
         if schema["type"] == "array" and (not isinstance(value, list) or len(value) > schema["maxItems"]):
             raise ValueError("证券数量超出本次问答范围。")
         if schema["type"] == "number" and (type(value) not in (int, float) or not math.isfinite(value)):
             raise ValueError("请输入有效的数值参数。")
+        if schema["type"] == "integer" and (type(value) != int or not schema["minimum"] <= value <= schema["maximum"]):
+            raise ValueError(f"{key} 须为 {schema['minimum']} 至 {schema['maximum']} 以内的整数。")
         if "enum" in schema and value not in schema["enum"]:
             raise ValueError("请选择支持的查询选项。")
+    if name in ("rank_stocks", "screen_financials"):
+        return stock_selection(name, p, store)
     if name == "security_data":
         return security_data(store, client, p)
     if name == "financial_report":

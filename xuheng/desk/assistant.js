@@ -34,14 +34,14 @@ function sourceView(item) {
 function turnView(turn) {
   return '<article class="answer-turn"><h2>'+esc(turn.question)+'</h2><p class="answer-text">'+esc(turn.answer)+'</p>'+
     (turn.evidence.length ? '<details><summary>查看数据依据（'+turn.evidence.length+'）</summary>'+
-      turn.evidence.map(sourceView).join("")+'</details>' : "")+'</article>';
+      turn.evidence.map(sourceView).join("")+'</details>' : note("本轮未查询数据"))+'</article>';
 }
 
 export async function assistantPage({panel,day,current}) {
   let checked = false, loadError = "";
-  const examples = ["贵州茅台最近一次收盘价是多少？",
+  const examples = ["从全 A 股推荐 3 只值得研究的股票，说说你为什么选它们、各有什么风险。","贵州茅台最近一次收盘价是多少？",
     date(day)+"，沪深300收盘多少点？","最近有多少只 A 股站上了 200 日均线？"];
-  const head = title("研究问答","用 DeepSeek V4.1 Flash 查询 A 股行情、估值和财报，或核对序衡的市场宽度与自选组合回测。");
+  const head = title("研究问答","与 DeepSeek V4.1 Flash 讨论 A 股、筛选候选股票，也可以查看推荐依据、行情、财报和组合回测。");
   function render(focus=false) {
     if (!current()) return;
     if (!checked || !access) {
@@ -81,7 +81,7 @@ export async function assistantPage({panel,day,current}) {
     const disabled = pending || !ready;
     panel.innerHTML = head+'<div id="research-chat"><div id="answer-list">'+turns.map(turnView).join("")+'</div>'+
       box("研究问题",'<form id="research-chat-form"><label class="chat-label" for="research-question">问题或追问</label>'+
-        '<textarea id="research-question" rows="3" maxlength="900" placeholder="输入股票、指标和日期…"></textarea>'+
+        '<textarea id="research-question" rows="3" maxlength="900" placeholder="向研究助手提问，例如：有哪些低估值的股票值得关注？"></textarea>'+
         '<div class="actions"><button class="primary" type="submit" '+(disabled?'disabled':'')+'>发送问题</button>'+
         (turns.length?'<button class="quiet" type="button" id="clear-chat" '+(pending?'disabled':'')+'>清空对话</button>':'')+
         '<button class="quiet" type="button" id="lock-chat" '+(pending?'disabled':'')+'>'+
