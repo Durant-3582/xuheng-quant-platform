@@ -17,6 +17,8 @@ const $=id=>document.getElementById(id),P=$("panel");
 const sections=[["overview","市场总览","M3 12h4l3-6 4 12 3-7h4"],["news","新闻情绪","M4 4h16v16H4z M7 8h10 M7 12h4 M13 12h4 M7 16h10"],["indices","指数中心","M3 18h18M4 14l5-5 4 2 7-7"],["stocks","个股研究","M4 17h16M8 4v9m8-6v8M6 7h4m4 3h4"],["factors","因子选股","M3 5h18M6 11h12M9 17h6"],["backtest","策略回测","M4 18V5m0 13h17M7 14l4-5 4 2 5-7"],["portfolio","组合表现","M11 3a9 9 0 1 0 10 10H11Zm3 0v7h7a8 8 0 0 0-7-7z"]];
 sections.push(["assistant","研究问答","M3 4h18v12H9l-6 5V4z M7 8h10 M7 12h7"]);
 const benchmarks=["000001.SH","399001.SZ","000300.SH","000905.SH","000852.SH","399006.SZ","899050.BJ"];
+const totalReturnCodes={"000001.SH":"000888.SH","399001.SZ":"399002.SZ","000300.SH":"H00300.CSI",
+ "000905.SH":"H00905.CSI","000852.SH":"H00852.CSI","399006.SZ":"399606.SZ","899050.BJ":"899050CNY01.CSI"};
 const venues={SSE:"沪市",SZSE:"深市",BSE:"北交所",CSI:"中证",CNI:"国证",SW:"申万",CI:"中信",CICC:"中信",OTH:"其他"};
 const sourceScopes={stock:"A 股",equity:"编制说明覆盖境内股票",benchmark:"市场基准 / 已核股票指数",industry:"行业系列",review:"样本范围待核"};
 let app,items=[],byCode=new Map(),aliases={},aliasRows=[],version=0,pageName="",routeCode="",killGraphs=new Map();
@@ -168,7 +170,8 @@ async function security(ticket){
  const plot='<div class="controls">'+rangeControl("range","行情区间",[[20,"近 20 日"],[60,"近 60 日"],[252,"近 1 年"],...(!isIndex?[[756,"近 3 年"]]:[]),[0,"全部历史"]],range)+(isIndex?opt("second","比较指数",[["","仅看本指数"],...benchOpts().filter(v=>v[0]!==code)],secondBench!==code?secondBench:""):"")+'</div><div id="security-plot">'+line("sec-chart")+'</div><div id="sec-legend"></div><div id="metadata" class="note"></div>';
  if(isIndex)html+=box(row[1],summary+plot);
  else {
-   html+=box(row[1],summary)+stockLayout(plot,opt("beta-bench","市场基准",benchOpts(),betaBenchmark));
+   html+=box(row[1],summary)+stockLayout(plot,opt("year-bench","一年比较基准",benchOpts(),betaBenchmark),
+     opt("beta-bench","市场基准",benchOpts(),betaBenchmark));
  }
  html+=box("历史记录",'<div id="bar-table">'+empty("读取日线…")+'</div>','<button class="quiet" id="download" disabled>导出 CSV</button>');
  html+=box(isIndex?"历史成分与权重":"财务披露",'<div class="controls">'+(isIndex?'<label>截至日期 <input id="member-date" type="date" min="2000-01-01" value="'+date(app.day)+'" max="'+date(app.day)+'"></label>':'')+'<button id="extra-data" class="quiet">'+(isIndex?'查询最近一期成分':'查看财报指标')+'</button></div><div id="extra-result"></div>',isIndex?"":financeLink(code));
@@ -179,9 +182,18 @@ async function security(ticket){
  function updateStockComparison(){
    if(!history||ticket!==version)return;
    const revision=++comparisonVersion;
-   renderStockComparison(history,betaBenchmark,()=>ticket===version&&revision===comparisonVersion,updateStockComparison,research);
+   const current=()=>ticket===version&&revision===comparisonVersion;
+   renderStockComparison(history,betaBenchmark,current,updateStockComparison,research);
+   loadOutlookBenchmark(betaBenchmark,current,updateStockComparison,research);
  }
- if(!isIndex)$("beta-bench").onchange=e=>{betaBenchmark=e.target.value;updateStockComparison();};
+ if(!isIndex){
+   const changeBenchmark=e=>{
+     betaBenchmark=e.target.value;
+     $("year-bench").value=betaBenchmark;$("beta-bench").value=betaBenchmark;
+     updateStockComparison();
+   };
+   $("year-bench").onchange=changeBenchmark;$("beta-bench").onchange=changeBenchmark;
+ }
  let extraRevision=0;
  if(isIndex)$("member-date").oninput=()=>{extraRevision++;$("extra-result").replaceChildren();$("extra-data").disabled=false;};
  $("extra-data").onclick=async()=>{
@@ -243,6 +255,20 @@ async function security(ticket){
  try{const other=await series(secondBench,app.day);if(ticket!==version)return;const [a,b]=compare(direct,other.bars.map(b=>[dayKey(b.day),b.close]));if(a.length){traces=[{name:row[1],data:a},{name:name(secondBench),data:b}];$("sec-legend").innerHTML=legend(traces.map(t=>t.name))+note("两条曲线从首个共同交易日的 100 起算。");}else{$("sec-legend").innerHTML=note("比较指数在所选区间无共同报价，显示当前指数点位。");}}catch(e){if(ticket!==version)return;retryIn($("sec-legend"),e instanceof DataDateError?e:"比较指数暂不可用，显示当前指数点位。",route,"retry-comparison","重试指数比较");}
  }chart("sec-chart",traces);
  }catch(e){if(ticket===version){retryIn($("security-plot"),e,route,"retry-series","重新读取行情");$("bar-table").innerHTML=empty("日线读取未完成。");if(!isIndex){research.unavailable("行情尚未完整读取，请重试价格图。");$("stock-beta").innerHTML=empty("等待个股行情后计算 Beta。");retryIn($("stock-diagnosis"),e,route,"retry-diagnosis","重新读取行情");}}}
+}
+async function loadOutlookBenchmark(code,current,retry,research){
+ const symbol=totalReturnCodes[code];
+ const info={name:name(code),code:symbol,launch:byCode.get(symbol)?.[6]};
+ research.benchmark({...info,state:"loading"});
+ try{
+   if(!info.launch)throw new Error("当前数据目录缺少该全收益指数的发布日期。");
+   const study=await series(symbol,app.day);
+   if(!current())return;
+   if(study.status==="denied"||!study.bars.some(b=>b.close>0))throw new Error("该全收益指数缺少可用的收盘序列。");
+   research.benchmark({...info,state:"ready",bars:study.bars});
+ }catch(error){
+   if(current())research.benchmark({...info,state:"error",reason:error.message,retry});
+ }
 }
 async function renderStockComparison(stock,benchmark,current,retry,research){
  const target=$("stock-diagnosis"),out=$("stock-beta");

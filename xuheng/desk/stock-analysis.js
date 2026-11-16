@@ -112,14 +112,28 @@ export function forwardStudy(prices,profile,field){
   return {n,rows:selected,median:n>=12?quantile(rs,.5):null,win:n>=12?rs.filter(r=>r>0).length/n:null};
 }
 
-const models={
-  strong:["积极配置",.20,"估值或价格处于相对低位，均线趋势也偏强。","若价格失守中期均线，重新核对趋势的支持。"],
-  wait:["等待企稳",.05,"位置相对偏低，趋势尚未给出同等支持。","关注价格与 60 日均线的关系，以及短期均线能否持续改善。"],
-  hold:["趋势持有",.15,"均线趋势偏强，当前位置的历史折价有限。","若价格回到中期均线下方，重新评估趋势。"],
-  avoid:["暂时回避",0,"历史位置偏高，均线趋势同时偏弱。","回到参考区间或均线转强时，分别复核价格位置和趋势。"],
-  neutral:["审慎观察",.08,"历史位置与趋势尚未同时满足积极或回避条件。","当均线排列或历史分位跨过评级阈值时复评。"],
-};
-export function assessment(prices,profile,active){
+function trendScore(point){
+  const [short,medium,long]=point.ma;
+  const tests=[[point.adj,short],[short,medium],[medium,long],[point.adj,long]];
+  if(!tests.every(pair=>pair.every(positive)))return null;
+  return 25*sum(tests.map(([a,b])=>Math.abs(a-b)<=1e-10*Math.max(a,b)?0.5:Number(a>b)));
+}
+
+function trendDirection(score){
+  if(!Number.isFinite(score))return null;
+  if(score>=62.5)return 1;
+  if(score<=37.5)return -1;
+  return 0;
+}
+
+function positionBand(rank){
+  if(!Number.isFinite(rank))return null;
+  if(rank<=.4+1e-12)return "低位";
+  if(rank>=.6-1e-12)return "高位";
+  return "中位";
+}
+
+export function assessment(prices,profile){
   const {end,points}=prices;
   if(!end)return null;
   let basis=null, field=null, rank=null, low=null, high=null, n=0,from=null,to=null;
@@ -138,18 +152,84 @@ export function assessment(prices,profile,active){
       low=quantile(values,.30);high=quantile(values,.55);
     }
   }
-  const [m20,m60,m200]=end.ma;
-  const tests=[[end.adj,m20],[m20,m60],[m60,m200],[end.adj,m200]];
-  const trend=tests.every(pair=>pair.every(positive))?25*sum(tests.map(([a,b])=>a>b?1:a<b?0:.5)):null;
+  const trend=trendScore(end);
   const value=rank===null?null:100*(1-rank);
   const score=trend!==null&&value!==null?(trend+value)/2:null;
-  const result={basis,field,n,from,to,rank,low,high,trend,value,score,tests,model:null,cap:null};
-  if(!active||score===null)return result;
-  const state=value>=60?(trend>=62.5?"strong":"wait"):trend>=62.5?"hold":value<=40&&trend<=25?"avoid":"neutral";
-  const model=models[state];result.model=model;
-  const distance=prices.stop===null?null:1-prices.stop/end.close;
-  result.cap=model[1]===0?0:distance>0?Math.min(model[1],.005/distance):null;
+  return {basis,field,n,from,to,rank,band:positionBand(rank),low,high,trend,direction:trendDirection(trend),value,score};
+}
+
+function outcomes(rows,field){
+  const values=sorted(rows.map(r=>r[field]));
+  let lastExit="",nonoverlap=0;
+  for(const row of rows){
+    if(row.entry>lastExit){nonoverlap++;lastExit=row.exit;}
+  }
+  return {rows,n:rows.length,nonoverlap,median:values.length?quantile(values,.5):null,
+    wins:values.filter(v=>v>0).length};
+}
+
+// A signal only uses observations already available at the close of its month.
+export function signalHistory(prices,profile,current){
+  const rows=[];
+  if(!current?.band||current.direction===null)return outcomes(rows,"ret");
+  const {dates,points,byDate,end}=prices;
+  const monthEnds=new Map(dates.map((d,i)=>[month(d),i]));
+  const valuations=new Map((profile?.history||[]).map(v=>[v.d,v]));
+  const field=current.field, prior=[];
+  let priceStart=0,priceEnd=0;
+  for(const [m,i] of monthEnds){
+    const d=dates[i],point=byDate.get(d);
+    if(m+12>=month(end.d))break; // the exit month must have finished
+    if(!point)continue;
+    let rank=null;
+    if(field){
+      while(prior.length&&prior[0].m<m-60)prior.shift();
+      const v=valuations.get(d)?.[field];
+      if(!positive(v))continue;
+      if(prior.length>=24)rank=position(prior.map(r=>r.value),v);
+      prior.push({m,value:v});
+    }else{
+      while(priceEnd<points.length&&points[priceEnd].d<d)priceEnd++;
+      while(priceStart<priceEnd&&month(points[priceStart].d)<m-60)priceStart++;
+      if(priceEnd-priceStart>=252)rank=position(points.slice(priceStart,priceEnd).map(p=>p.adj),point.adj);
+    }
+    const trend=trendScore(point);
+    if(positionBand(rank)!==current.band||trendDirection(trend)!==current.direction)continue;
+    const entry=dates[i+1],exit=dates[monthEnds.get(m+12)];
+    const start=byDate.get(entry),finish=byDate.get(exit);
+    if(start&&finish)rows.push({signal:d,entry,exit,rank,trend,ret:finish.adj/start.adj-1});
+  }
+  return outcomes(rows,"ret");
+}
+
+export function relativeHistory(history,bars,launch){
+  const closes=new Map(bars.filter(b=>positive(b.close)).map(b=>[key(b.day),b.close]));
+  const rows=[];
+  for(const row of history.rows){
+    const first=closes.get(row.entry),last=closes.get(row.exit);
+    if(!launch||row.signal<key(launch)||!first||!last)continue;
+    const benchmark=last/first-1;
+    rows.push({...row,benchmark,excess:row.ret-benchmark});
+  }
+  const result=outcomes(rows,"excess");
+  const pp=result.median===null?0:Number((result.median*100).toFixed(2));
+  result.direction=result.nonoverlap>=2?Math.sign(pp):null;
   return result;
+}
+
+export function signalRating(current,history,scenario,prices,active){
+  if(!active||current.direction===null)return {label:null,cap:null};
+  const dir=current.direction;
+  const valueSupports=Boolean(current.field)&&(dir===1&&current.band==="低位"||dir===-1&&current.band==="高位");
+  const pastSupports=history.nonoverlap>=2&&dir*history.median>0;
+  const simulationSupports=Number.isFinite(scenario?.quantiles[2])&&dir*scenario.quantiles[2]>0;
+  const strong=valueSupports&&pastSupports&&simulationSupports;
+  const levels=["强烈看淡","看淡","中性","看多","强烈看多"];
+  const index=2+dir*(strong?2:1);
+  const ceiling=[0,.05,.08,.15,.20][index];
+  const distance=positive(prices.stop)?1-prices.stop/prices.end.close:null;
+  const cap=ceiling===0?0:distance>0?Math.min(ceiling,.005/distance):null;
+  return {label:levels[index],strong,valueSupports,pastSupports,simulationSupports,cap,ceiling};
 }
 
 function generator(seed){

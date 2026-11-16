@@ -140,6 +140,14 @@ html{overflow-y:auto}
 .research-badge{display:inline-block;padding:3px 10px;border-radius:5px;background:#eff1e9;color:#3a504a;font-size:16px}
 .research-badge[data-tone=positive]{background:#e4efe7;color:#205544}
 .research-badge[data-tone=caution]{background:#f7e8e3;color:#853e34}
+.outlook-heading,.research-year h3{font-size:15px;line-height:1.45;margin:0 0 7px}
+.outlook-heading .research-badge{margin-left:5px}
+.research-year{border-block:1px solid var(--line);margin:12px 0;padding:12px 0}
+.research-year .controls{margin:0 0 8px}
+.outlook-name{font-size:14px;font-weight:600}
+#research-verdict p,.research-year p{line-height:1.5;margin:6px 0}
+.signal-observations{max-height:18rem;overflow:auto}
+.signal-observations .tbl{margin:0}
 .research-readings{display:grid;grid-template-columns:auto 1fr;gap:5px 12px;margin:12px 0;font-size:13px}
 .research-readings dt{color:var(--muted)}
 .research-readings dd{margin:0;text-align:right;font-weight:600}
