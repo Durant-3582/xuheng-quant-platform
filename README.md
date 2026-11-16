@@ -1,4 +1,4 @@
-# 序衡 · A 股投研
+# Rocket｜A 股量化研究平台
 
 独立的 Streamlit 课程平台，使用 Tushare Pro 收盘数据。原网站只作功能对照；访客查行情、筛因子、跑策略或组合回测时，从本项目的行情库读取。股票包括存续及有记录的退市 A 股，申请不到或无记录的指数在数据覆盖页区分显示。
 
@@ -26,7 +26,7 @@ streamlit run streamlit_app.py
 
 行情任务成功后，研究库任务补录 Tushare 财报公告、月末估值和申万官方指数日线。股价、财务报告和研究数据保存在项目的私有行情存储中，`study-data` 分支只发布版本索引。报告按公告日进入历史样本，同一公告日出现冲突的字段保留为空。行业回测从申万 2021 版行业指数启用后计算。[研究数据更新记录](https://github.com/Durant-3582/xuheng-quant-platform/actions/workflows/studies.yml)
 
-**公开课程入口**　访客在普通浏览器打开[序衡](https://xuheng-quant-lab-3582.streamlit.app/)即可使用。Streamlit Community Cloud 直接运行 GitHub 仓库根目录的 `streamlit_app.py`。查历史、筛选和回测按需读取本项目归档的交易数据。点击查询最新日线时，服务器直接调用 Tushare。服务器可以在 Tushare 暂时不可用时继续提供已归档的数据。
+**公开课程入口**　访客在普通浏览器打开[Rocket](https://xuheng-quant-lab-3582.streamlit.app/)即可使用。Streamlit Community Cloud 直接运行 GitHub 仓库根目录的 `streamlit_app.py`。查历史、筛选和回测按需读取本项目归档的交易数据。点击查询最新日线时，服务器直接调用 Tushare。服务器可以在 Tushare 暂时不可用时继续提供已归档的数据。
 
 新闻任务每小时第 9、39 分钟计划运行。它使用现有行情库的股票名称和代码匹配新闻，在独立的 `news-data` 分支发布标题、原文编号及计算结果。页面共享五分钟缓存，「刷新新闻」向东方财富重新取样，30 秒内同类手动请求共用一次结果。新闻按北京时间显示，抓取失败会保留最近一次有效样本。情绪词表与行业热度参照[衡策的计算口径](https://github.com/Blockpig1911/hengce-quant/blob/fbe153fe63e912c8cf76a8f9243412f49cd30e53/core/news.py)。
 
