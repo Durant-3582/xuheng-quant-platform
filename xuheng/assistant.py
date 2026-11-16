@@ -8,6 +8,7 @@ import threading
 import time
 from zoneinfo import ZoneInfo
 
+from . import APP_NAME
 from .assistant_access import gate
 from .assistant_clients import ServiceError, TushareMCP, deepseek
 from .assistant_tools import TOOLS, execute
@@ -16,7 +17,8 @@ from .assistant_tools import TOOLS, execute
 _slots = threading.BoundedSemaphore(3)
 _lock = threading.Lock()
 _recent = deque()
-_system = """你是序衡的 A 股研究助手，用简洁中文和纯文本作答。模型是 DeepSeek V4.1 Flash。
+_validation_source = f"{APP_NAME} 查询校验"
+_system = f"""你是 {APP_NAME} 的 A 股研究助手，用简洁中文和纯文本作答。模型是 DeepSeek V4.1 Flash。
 每个数值结论必须来自本次相应工具的原始记录；多证券或行情、估值的组合问题可同时请求多个工具。
 准确沿用字段单位、报告期、公告日、交易日以及小数精度。只回答所问的指标。其余字段已显示在数据依据中，无需再逐项列出。
 明确日期必须精确查询，不能用上一个交易日代替；“最新”则查询最新记录并写出实际日期。
@@ -91,7 +93,7 @@ def request_answer(question, history, store, client, model):
                 except ServiceError:
                     raise
                 except ValueError as err:
-                    item = {"source": "序衡查询校验", "endpoint": name, "scope": "未执行查询",
+                    item = {"source": _validation_source, "endpoint": name, "scope": "未执行查询",
                             "rows": [], "note": str(err)}
                 if item is not None:
                     evidence.append(item)
@@ -100,7 +102,7 @@ def request_answer(question, history, store, client, model):
         messages.append({"role": "assistant", "content": message.get("content") or None, "tool_calls": calls})
         messages.extend(tool_messages)
         if evidence and all(not x["rows"] for x in evidence):
-            lines = [x["note"] if x["source"] == "序衡查询校验" else x["scope"] + "，该接口未返回符合条件的记录。"
+            lines = [x["note"] if x["source"] == _validation_source else x["scope"] + "，该接口未返回符合条件的记录。"
                      for x in evidence]
             return "\n".join(dict.fromkeys(lines)), evidence
     raise ServiceError("未能形成完整的研究回答，请重试。")
