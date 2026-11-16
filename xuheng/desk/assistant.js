@@ -41,7 +41,7 @@ export async function assistantPage({panel,day,current}) {
   let checked = false, loadError = "";
   const examples = ["贵州茅台最近一次收盘价是多少？",
     date(day)+"，沪深300收盘多少点？","最近有多少只 A 股站上了 200 日均线？"];
-  const head = title("研究问答","用 DeepSeek V4.1 Flash 查询 A 股行情、估值和财报，或核对 Rocket 的市场宽度与自选组合回测。");
+  const head = title("研究问答","用 DeepSeek V4.1 Flash 查询 A 股行情、估值和财报，或核对序衡的市场宽度与自选组合回测。");
   function render(focus=false) {
     if (!current()) return;
     if (!checked || !access) {

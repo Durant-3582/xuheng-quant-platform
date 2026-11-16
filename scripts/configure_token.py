@@ -12,7 +12,7 @@ def main():
     folder.mkdir(mode=0o700, exist_ok=True)
     if sys.platform == 'darwin':
         script = ('text returned of (display dialog "粘贴 Tushare Token。仅供独立版后台向 Tushare 请求数据。" '
-                  'default answer "" with hidden answer with title "Rocket · 配置 Tushare" '
+                  'default answer "" with hidden answer with title "序衡独立版 · 配置 Tushare" '
                   'buttons {"取消", "保存"} default button "保存" cancel button "取消")')
         response = subprocess.run(['/usr/bin/osascript', '-e', script], capture_output=True, text=True)
         if response.returncode:

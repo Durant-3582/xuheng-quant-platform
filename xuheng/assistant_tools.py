@@ -4,7 +4,6 @@ import math
 import re
 from zoneinfo import ZoneInfo
 
-from . import APP_NAME
 from .assistant_clients import ServiceError
 from .frames import BENCHMARKS, Rules
 
@@ -29,9 +28,9 @@ TOOLS = [
     tool("financial_report", "按用户指定的报告期查 Tushare 财务指标及公告日。报告期为季末日期。"
          "若指定当时可知的日期则填写 known_by，只能核对此接口当前返回的版本。",
          {"symbol": SYMBOL, "period": DAY, "known_by": DAY}, ["symbol", "period"]),
-    tool("market_breadth", f"查询 {APP_NAME} 市场宽度，计数和占比为全A股站上各自200日均线的股票，省略日期取研究库最新。",
+    tool("market_breadth", "查询序衡市场宽度，计数和占比为全A股站上各自200日均线的股票，省略日期取研究库最新。",
          {"day": DAY}, []),
-    tool("portfolio_backtest", f"调用 {APP_NAME} 的组合回测。仅适用于用户明确提出的自选股票组合、区间、"
+    tool("portfolio_backtest", "调用序衡现有组合回测。仅适用于用户明确提出的自选股票组合、区间、"
          "配权方式、调仓规则，费率单位是单边基点；参考基准可省略（默认沪深300）。"
          "支持买入持有或每月调仓。单次问答最多12只、区间一年。缺少重要设置时先询问。",
          {"symbols": {"type": "array", "items": SYMBOL, "maxItems": 12}, "start": DAY, "end": DAY,
@@ -89,7 +88,7 @@ def resolve(store, value):
                 return preferred[0]
         options = "、".join(r[1] + " " + r[0] for r in list(candidates.values())[:5])
         raise ValueError("证券有重名或重号，请确认完整代码：" + options)
-    raise ValueError(f"{APP_NAME} 证券目录中未找到该名称或代码，请提供带交易所后缀的代码。")
+    raise ValueError("序衡证券目录中未找到该名称或代码，请提供带交易所后缀的代码。")
 
 
 def evidence(source, endpoint, scope, rows, note=""):
@@ -184,7 +183,7 @@ def market_breadth(store, p):
     values = [{"交易日": day(r[0]).isoformat(), "站上均线（只）": r[1], "有效样本（只）": r[2],
                "当日报价（只）": r[3], "站上均线占比（%）": round(100*r[1]/r[2], 4) if r[2] else None}
               for r in data["rows"] if r[0] == stamp]
-    return evidence(f"{APP_NAME} 研究库（Tushare 日线计算）", "200 日均线市场宽度", day(stamp).isoformat(), values,
+    return evidence("序衡研究库（Tushare 日线计算）", "200 日均线市场宽度", day(stamp).isoformat(), values,
                     "分母仅含当日有有效报价、且已有 200 个有效收盘的股票。")
 
 
@@ -209,7 +208,7 @@ def portfolio_backtest(store, p):
            "期末持股数": periods[-1]["held"], "期末现金（%）": round(periods[-1]["cash"], 4)}
     rule_text = ("等权" if rule.weighting == "equal" else "仅做多 TB") + " · " + ("买入并持有" if rule.daily else "每月调仓")
     scope = f"{', '.join(rule.symbols)} · {start.isoformat()} 至 {end.isoformat()}"
-    return evidence(f"{APP_NAME} 组合回测（Tushare 归档）", "区间回测", scope, [row],
+    return evidence("序衡组合回测（Tushare 归档）", "区间回测", scope, [row],
                     f"{rule_text} · {BENCHMARKS[bench]} · 单边 {rule.fee:g} 个基点，已计交易成本。")
 
 
