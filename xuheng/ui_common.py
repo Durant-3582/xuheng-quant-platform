@@ -8,7 +8,6 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from . import APP_TITLE
 from .archive import Archive, ArchiveError
 
 ROOT=Path(__file__).resolve().parents[1]
@@ -40,7 +39,7 @@ def access():
     if valid(st.query_params.get("course","")):
         st.session_state["access_grant"]=digest
         return
-    st.title(APP_TITLE)
+    st.title("序衡 · A 股投研")
     st.write("课程研究工作台。打开课程专用链接，或输入课程口令后查看。")
     with st.form("access"):
         value=st.text_input("课程访问口令",type="password",max_chars=300)
