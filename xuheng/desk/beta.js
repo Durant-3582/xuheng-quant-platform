@@ -31,7 +31,11 @@ export function rollingBeta(stock, index, size = 120) {
     const variance = (sxx - sx*sx/size) / (size-1);
     const end = window.at(-1)[2];
     const last = points.at(-1);
-    latest = {start:window[0][2], end, covariance, variance,
+    const average=sy/size;
+    const stockVariance=window.reduce((s,pair)=>s+(pair[1]-average)**2,0)/(size-1);
+    const correlation=last?.[0]===end.replaceAll("-","")&&stockVariance>1e-20
+      ? Math.min(1,Math.max(-1,covariance/Math.sqrt(variance*stockVariance))) : null;
+    latest = {start:window[0][2], end, covariance, variance, correlation,
       value:last?.[0] === end.replaceAll("-","") ? last[1] : null, observations:window};
   }
   return {pairs, points, latest};
