@@ -1,0 +1,55 @@
+import assert from "node:assert/strict";
+import {assessment,forwardStudy,researchPrices,simulateYear,valuationProfile,yearRisk} from "../xuheng/desk/stock-analysis.js";
+import {rollingBeta} from "../xuheng/desk/beta.js";
+
+const dates=[], stocks=[], index=[];
+const near=(x,y,delta=1e-9)=>assert.ok(Math.abs(x-y)<delta,x+" vs "+y);
+let price=100, market=5000;
+for(let d=new Date("2010-01-01T00:00:00Z");dates.length<3250;d.setUTCDate(d.getUTCDate()+1)){
+  if([0,6].includes(d.getUTCDay()))continue;
+  const day=d.toISOString().slice(0,10), i=dates.length;
+  const r=i%2?.006:-.004;
+  const prev=price/(i===3100?2:1), m=market;
+  market=m*(1+r);price=prev*(1+1.5*r+.0001);
+  dates.push(day.replaceAll("-",""));stocks.push({day,close:price,high:price*1.01,low:price*.99,volume:100,pre_close:prev});
+  index.push({day,close:market,pre_close:m});
+}
+const p=researchPrices(stocks,dates);
+near(p.end.adj,p.end.close);
+near(p.end.ma[2],p.points.slice(-200).reduce((x,b)=>x+b.adj,0)/200);
+near(p.points[3100].adj/p.points[3099].adj,stocks[3100].close/stocks[3100].pre_close);
+assert.equal(p.points[18].ma[0],null);assert.ok(p.points[19].ma[0]>0);
+const missing=researchPrices(stocks.map((s,i)=>i===3200?{...s,pre_close:null}:s),dates);
+assert.equal(missing.points[0].d,dates[3200]);assert.equal(missing.end.ma[2],null);
+const paused=researchPrices(stocks.filter((_,i)=>i!==3230),dates);
+assert.equal(paused.byDate.get(dates[3231]).daily,null);
+const risk=yearRisk(p);
+assert.equal(risk.n,252);assert.equal(risk.start,dates.at(-253));assert.ok(risk.worst<0);
+assert.equal(yearRisk(researchPrices(stocks.slice(-250),dates)),null);
+const rangeLoss=researchPrices(stocks.slice(-253).map((s,i)=>({...s,close:i?90:100,high:100,low:90,pre_close:i===1?100:i?90:100})),dates);
+near(yearRisk(rangeLoss).worst,-.1);
+const beta=rollingBeta(stocks,index);
+near(beta.latest.correlation,1);near(beta.latest.value,1.5);
+assert.equal(rollingBeta(stocks.map(s=>({...s,close:1,pre_close:1})),index).latest.correlation,null);
+const rows=dates.filter((d,i)=>dates[i+1]&&d.slice(0,6)!==dates[i+1].slice(0,6)).map(d=>[d,10,2]);
+const quote={d:p.end.d,close:p.end.close,pe:10,pb:2};
+const val=valuationProfile(p,rows,quote);
+near(val.metrics.pe.position,.5);assert.equal(val.metrics.pe.n,60);
+assert.equal(valuationProfile(p,rows,{...quote,d:dates.at(-2)}).metrics.pe.value,null);
+assert.equal(valuationProfile(p,rows,{...quote,close:quote.close/2}).metrics.pe.value,null);
+assert.equal(valuationProfile(p,rows,{...quote,pe:-1}).metrics.pe.position,null);
+assert.equal(assessment(p,valuationProfile(p,rows,{...quote,pe:-1}),true).field,"pb");
+assert.equal(assessment(p,valuationProfile(p,[],quote),true).basis,"历史价格");
+const a=assessment(p,val,true);near(a.rank,.5);near(a.low,p.end.close);
+assert.equal(assessment(p,val,false).cap,null);
+const events=forwardStudy(p,val,"pe");assert.ok(events.n>12);assert.equal(events.rows[0].from,rows[24][0]);
+for(const h of events.rows){near(h.rank,.5);near(h.ret,p.byDate.get(h.to).adj/p.byDate.get(h.from).adj-1);assert.ok(h.to<p.end.d);}
+assert.equal(forwardStudy(p,valuationProfile(p,rows.slice(-24),quote),"pe").n,0);
+const s=simulateYear(p,"test"), s2=simulateYear(p,"test");
+assert.deepEqual(s,s2);assert.equal(s.n,2000);assert.equal(s.observed,756);assert.equal(s.blocks,752);
+assert.equal(s.bins.reduce((n,b)=>n+b.n,0),s.n);
+assert.equal(simulateYear(researchPrices(stocks.slice(-240),dates),"test"),null);
+const dropping=stocks.map((b,i)=>({...b,close:100*.999**i,pre_close:100*.999**(i-1)}));
+const loss=simulateYear(researchPrices(dropping,dates),"down");
+near(loss.dd,.999**252-1);near(loss.quantiles[2],.999**252-1);assert.equal(loss.win,0);
+console.log("PASS: ex-rights, IPO, missing/suspended sessions, rolling windows, same-date valuation, dated forward observations, 2,000 paths and drawdown from initial wealth.");
