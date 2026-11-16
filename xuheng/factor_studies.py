@@ -188,18 +188,21 @@ def test_factors(index,reader,w,venue,body):
 
 def paging(body,count):
     page=body.get('page',0)
-    if type(page)!=int or not 0<=page<=10000:
-        raise ValueError('结果页码无效。')
-    page=min(page,max(0,(count-1)//25))
-    return page,slice(page*25,(page+1)*25)
+    size=body.get('pageSize',25)
+    if type(page)!=int or not 0<=page<=10000 or type(size)!=int or not 1<=size<=25:
+        raise ValueError('结果页码或每页数量无效。')
+    page=min(page,max(0,(count-1)//size))
+    return page,slice(page*size,(page+1)*size)
 
 
 def screen(index,reader,current,body):
     period=body.get('period','latest')
+    if period=='common':
+        period=index['defaultPeriod']
     if period not in ['latest',*index['periods']]:
         raise ValueError('请选择有数据的报告期。')
     low,high=body.get('minROE'),body.get('maxDebt')
-    if any(type(v) not in (int,float) or not math.isfinite(v) for v in (low,high)) or not 0<=high<=1000:
+    if any(type(v) not in (int,float) or not math.isfinite(v) for v in (low,high) if v is not None) or (high is not None and not 0<=high<=1000):
         raise ValueError('请填写有效的 ROE 下限和负债率上限。')
     col={'roe':3,'gross':4,'debt':5,'revenue':6,'profit':7,'pe':8}.get(body.get('sort','revenue'))
     if col is None:
@@ -210,18 +213,18 @@ def screen(index,reader,current,body):
     available=0
     for item in base:
         row=lookup.get(item[0])
-        if not row or row[3] is None or row[5] is None:
+        if not row or (low is not None and row[3] is None) or (high is not None and row[5] is None):
             continue
         extended=[*row,item[5]]
         if extended[col] is None or col==8 and extended[col]<=0:
             continue
         available+=1
-        if row[3]>=low and row[5]<=high:
+        if (low is None or row[3]>=low) and (high is None or row[5]<=high):
             rows.append((item[0],extended))
     sign=1 if col in (5,8) else -1
     rows.sort(key=lambda v:(sign*v[1][col],v[0]))
     page,sl=paging(body,len(rows))
-    return dict(rows=rows[sl],total=len(rows),page=page,pool=len(base),available=available,periods=index['periods'])
+    return dict(rows=rows[sl],total=len(rows),page=page,pool=len(base),available=available,periods=index['periods'],period=period)
 
 
 def analyze(store,body):
@@ -231,6 +234,16 @@ def analyze(store,body):
     venue=body.get('venue','')
     if venue not in EXCHANGES:
         raise ValueError('交易市场无效。')
+    if action in ('screen','rank'):
+        if body.get('asOfDate') and body['asOfDate']!=index['day']:
+            raise ValueError('选股使用最近一期完整研究截面，当前为 '+index['day']+'，无法据此给出其他日期的排名。')
+        current=read(index,'current',reader)
+        industry=body.get('industry')
+        if industry:
+            names={store.catalog[r[0]][4] for r in current} - {None,''}
+            if not isinstance(industry,str) or industry not in names:
+                raise ValueError('请使用股票目录中的行业名称。可选行业有'+'、'.join(sorted(names))+'。')
+            current=[r for r in current if store.catalog[r[0]][4]==industry]
     if action=='meta':
         result={'counts':index['counts'],'periods':index['periods'],'defaultPeriod':index['defaultPeriod']}
     elif action=='breadth':
@@ -244,12 +257,11 @@ def analyze(store,body):
         raw=read(index,'reports/'+str(bucket(code)),reader).get(code,[])
         result={'rows':latest(revisions(raw),index['day'])[:12]}
     elif action=='screen':
-        result=screen(index,reader,read(index,'current',reader),body)
+        result=screen(index,reader,current,body)
     elif action=='rank':
         w=weights(body)
-        current=read(index,'current',reader)
         codes={security_id(r[0]):r[0] for r in current}
-        matrix=np.asarray([[security_id(r[0]),*r[1:]] for r in current],dtype=float)
+        matrix=np.asarray([[security_id(r[0]),*r[1:]] for r in current],dtype=float).reshape(-1,1+len(FACTORS))
         rows,score,parts=scored(matrix,w,venue)
         order=score_order(rows,score)
         page,sl=paging(body,len(order))
