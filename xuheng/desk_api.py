@@ -55,7 +55,10 @@ def quotes(store, query):
         return dict(until=store.day, listed=item[6], closes=[
             [r[0], r[1] if r[0] == first else r[4]] for r in data["bars"] if r[0] in wanted])
     # Keep repeated column names off the wire. The browser expands rows for its charts.
-    return dict(until=store.day, status=data["status"], fields=BAR_FIELDS, rows=data["bars"])
+    result = dict(until=store.day, status=data["status"], fields=BAR_FIELDS, rows=data["bars"])
+    if item[2] == "stock" and data["bars"]:
+        result["calendar"] = [d for d in store.daily["dates"] if data["bars"][0][0] <= d <= data["bars"][-1][0]]
+    return result
 
 
 def strategy(store, q):
@@ -231,6 +234,12 @@ def dispatch(store, path, body, signing_key, token=""):
         return quotes(store,q)
     if loc.path=="/api/coverage":
         return coverage(store,q)
+    if loc.path=="/api/stock-valuation":
+        from .stock_valuation import valuation_history
+        code, item = security(store, q.get("symbol", ""))
+        if item[2] != "stock":
+            raise ValueError("请选择沪深北 A 股个股。")
+        return valuation_history(store, code)
     if loc.path=="/api/research":
         kind=q.get("type")
         code,_=security(store,q.get("symbol",""))

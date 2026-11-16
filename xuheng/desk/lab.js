@@ -36,11 +36,14 @@ export function pager(id,page,total,size){
 }
 export const select=(id,label,opts,value)=>'<label>'+esc(label)+' <select id="'+id+'">'+opts.map(([v,t])=>'<option value="'+esc(v)+'" '+(String(v)===String(value)?"selected":"")+'>'+esc(t)+'</option>').join("")+'</select></label>';
 export const line=(id)=>'<div class="chart"><canvas id="'+id+'" tabindex="0" role="img" aria-label="历史曲线，左右方向键可查看各日数值"></canvas><div class="tip" hidden></div></div>';
-export function draw(id,traces){
+export function draw(id,traces,{band=null,reference=null}={}){
  const c=document.getElementById(id);if(!c)return;const wrap=c.parentElement,tip=wrap.querySelector(".tip");
  const points=traces.flatMap(t=>t.data).filter(p=>Number.isFinite(p[1]));if(!points.length){wrap.innerHTML=empty("所选区间没有共同的有效数据。");return;}
  const days=Array.from(new Set(points.map(p=>p[0]))).sort(), positions=new Map(days.map((d,i)=>[d,i]));
- const vals=points.map(p=>p[1]),rawMin=vals.reduce((a,b)=>Math.min(a,b),Infinity),rawMax=vals.reduce((a,b)=>Math.max(a,b),-Infinity),margin=(rawMax-rawMin)*.07||Math.abs(rawMax)*.01||1,lo=rawMin-margin,hi=rawMax+margin;
+ const vals=points.map(p=>p[1]);
+ if(band)vals.push(...band);
+ if(Number.isFinite(reference))vals.push(reference);
+ const rawMin=vals.reduce((a,b)=>Math.min(a,b),Infinity),rawMax=vals.reduce((a,b)=>Math.max(a,b),-Infinity),margin=(rawMax-rawMin)*.07||Math.abs(rawMax)*.01||1,lo=rawMin-margin,hi=rawMax+margin;
  const colors=["#176552","#b28c4a","#6375a3","#a25949","#687d71"];let focus=null;
  const cached=traces.map((t,i)=>({...t,color:t.color||colors[i%colors.length],v:new Map(t.data)}));
  function paint(){
@@ -50,8 +53,10 @@ export function draw(id,traces){
    const ctx=c.getContext("2d");ctx.scale(scale,scale);const left=55,right=width-12,top=12,bottom=height-27;
    const X=i=>days.length===1?(left+right)/2:left+i/(days.length-1)*(right-left),Y=v=>bottom-(v-lo)/(hi-lo)*(bottom-top);
    ctx.font="11px system-ui";ctx.fillStyle="#586d67";ctx.textAlign="right";
+   if(band){ctx.fillStyle="rgba(34,122,99,.11)";ctx.fillRect(left,Y(band[1]),right-left,Math.max(2,Y(band[0])-Y(band[1])));ctx.fillStyle="#586d67";}
    for(let i=0;i<4;i++){const v=lo+(hi-lo)*i/3,y=Y(v);ctx.strokeStyle="#e4ebe5";ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(left,y);ctx.lineTo(right,y);ctx.stroke();ctx.fillText(fmt(v,Math.abs(v)>999?0:2),left-7,y+4);}
    ctx.textAlign="left";ctx.fillText(date(days[0]),left,height-5);ctx.textAlign="right";ctx.fillText(date(days.at(-1)),right,height-5);
+   if(Number.isFinite(reference)){ctx.strokeStyle="#a64b46";ctx.setLineDash([5,4]);ctx.beginPath();ctx.moveTo(left,Y(reference));ctx.lineTo(right,Y(reference));ctx.stroke();ctx.setLineDash([]);}
    for(const t of cached){if(t.data.length===1){const [d,v]=t.data[0];ctx.fillStyle=t.color;ctx.beginPath();ctx.arc(X(positions.get(d)),Y(v),3,0,Math.PI*2);ctx.fill();continue;}ctx.beginPath();ctx.strokeStyle=t.color;ctx.lineWidth=2;let started=false;for(const [d,v] of t.data){if(v==null)continue;const x=X(positions.get(d)),y=Y(v);if(!started){ctx.moveTo(x,y);started=true;}else ctx.lineTo(x,y);}ctx.stroke();}
    if(focus!==null){const d=days[focus],x=X(focus);ctx.strokeStyle="#73908b";ctx.setLineDash([3,3]);ctx.beginPath();ctx.moveTo(x,top);ctx.lineTo(x,bottom);ctx.stroke();ctx.setLineDash([]);tip.textContent=date(d)+"\n"+cached.filter(t=>t.v.has(d)).map(t=>t.name+" "+fmt(t.v.get(d))).join("\n");tip.hidden=false;tip.style.left=Math.max(2,Math.min(x+8,width-tip.offsetWidth-4))+"px";tip.style.top=(top+tip.offsetHeight+6)+"px";}else{tip.hidden=true;}
  }
@@ -83,7 +88,7 @@ export function series(code,day){
  if(!seriesCache.has(key)){
   const task=api("/api/series?"+new URLSearchParams({symbol:code,asOf:day})).then(data=>{requireDay(data.until,day);
     const bars=data.rows.map(row=>({...Object.fromEntries(data.fields.map((field,i)=>[field,row[i]])),day:date(row[0])}));
-    return {until:data.until,status:data.status,bars};}).catch(e=>{if(seriesCache.get(key)===task)seriesCache.delete(key);throw e;});
+    return {until:data.until,status:data.status,bars,calendar:data.calendar||[]};}).catch(e=>{if(seriesCache.get(key)===task)seriesCache.delete(key);throw e;});
   seriesCache.set(key,task);if(seriesCache.size>32)seriesCache.delete(seriesCache.keys().next().value);
  }
  return seriesCache.get(key);
