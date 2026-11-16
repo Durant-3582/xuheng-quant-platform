@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import {assessment,forwardStudy,researchPrices,simulateYear,valuationProfile,yearRisk} from "../xuheng/desk/stock-analysis.js";
+import {assessment,forwardStudy,relativeHistory,researchPrices,signalHistory,signalRating,simulateYear,valuationProfile,yearRisk} from "../xuheng/desk/stock-analysis.js";
 import {rollingBeta} from "../xuheng/desk/beta.js";
 
 const dates=[], stocks=[], index=[];
@@ -41,7 +41,7 @@ assert.equal(valuationProfile(p,rows,{...quote,pe:-1}).metrics.pe.position,null)
 assert.equal(assessment(p,valuationProfile(p,rows,{...quote,pe:-1}),true).field,"pb");
 assert.equal(assessment(p,valuationProfile(p,[],quote),true).basis,"历史价格");
 const a=assessment(p,val,true);near(a.rank,.5);near(a.low,p.end.close);
-assert.equal(assessment(p,val,false).cap,null);
+assert.equal(signalRating(a,{nonoverlap:0},null,p,false).cap,null);
 const events=forwardStudy(p,val,"pe");assert.ok(events.n>12);assert.equal(events.rows[0].from,rows[24][0]);
 for(const h of events.rows){near(h.rank,.5);near(h.ret,p.byDate.get(h.to).adj/p.byDate.get(h.from).adj-1);assert.ok(h.to<p.end.d);}
 assert.equal(forwardStudy(p,valuationProfile(p,rows.slice(-24),quote),"pe").n,0);
@@ -52,4 +52,34 @@ assert.equal(simulateYear(researchPrices(stocks.slice(-240),dates),"test"),null)
 const dropping=stocks.map((b,i)=>({...b,close:100*.999**i,pre_close:100*.999**(i-1)}));
 const loss=simulateYear(researchPrices(dropping,dates),"down");
 near(loss.dd,.999**252-1);near(loss.quantiles[2],.999**252-1);assert.equal(loss.win,0);
-console.log("PASS: ex-rights, IPO, missing/suspended sessions, rolling windows, same-date valuation, dated forward observations, 2,000 paths and drawdown from initial wealth.");
+const hist=signalHistory(p,val,a);
+assert.ok(hist.nonoverlap>=2&&hist.rows.length>70);
+for(const r of hist.rows){
+  const idx=dates.indexOf(r.signal);
+  assert.equal(r.entry,dates[idx+1]);assert.ok(r.exit<p.end.d);
+  near(r.ret,p.byDate.get(r.exit).level/p.byDate.get(r.entry).level-1);
+}
+const launch=hist.rows[20].signal;
+const relative=relativeHistory(hist,index,launch);
+const closes=new Map(index.map(q=>[q.day.replaceAll("-",""),q.close]));
+assert.equal(relative.n,hist.n-20);
+for(const r of relative.rows)near(r.excess,r.ret-(closes.get(r.exit)/closes.get(r.entry)-1));
+assert.equal(relative.direction,1);
+const noStart=index.filter(r=>r.day.replaceAll("-","")!==relative.rows[0].entry);
+assert.ok(!relativeHistory(hist,noStart,launch).rows.some(r=>r.signal===launch));
+assert.equal(relativeHistory({rows:hist.rows.slice(0,3)},index,dates[0]).direction,null);
+const fastIndex=index.map((r,i)=>({...r,close:100*1.01**i}));
+assert.equal(relativeHistory(hist,fastIndex,dates[0]).direction,-1);
+const cheap={...a,band:"低位",direction:1}, bullish={quantiles:[0,0,.12]},weak={quantiles:[0,0,-.12]};
+assert.equal(signalRating(cheap,hist,bullish,p,true).label,"强烈看多");
+assert.equal(signalRating(cheap,hist,weak,p,true).label,"看多");
+assert.equal(signalRating(cheap,hist,null,p,true).label,"看多");
+assert.equal(signalRating({...cheap,field:null},hist,bullish,p,true).label,"看多");
+const bear={...cheap,band:"高位",direction:-1}, losses={nonoverlap:3,median:-.1};
+assert.equal(signalRating(bear,losses,weak,p,true).label,"强烈看淡");
+assert.equal(signalRating(bear,losses,bullish,p,true).label,"看淡");
+assert.equal(signalRating({...a,direction:0},hist,bullish,p,true).label,"中性");
+const young=researchPrices(stocks.slice(0,29),dates.slice(0,29)),short=assessment(young,null);
+assert.equal(short.direction,null);
+assert.equal(signalRating(short,signalHistory(young,null,short),null,young,true).label,null);
+console.log("PASS: adjusted prices, dated valuations, signal matching, next-session entry, benchmark publication and exact closes, non-overlap, independent trend and simulation strength.");
