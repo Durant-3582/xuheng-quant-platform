@@ -79,7 +79,7 @@ class AssistantTests(unittest.TestCase):
         state, calls = self.unlocked({}), []
         def fake(messages, tools, choice):
             calls.append(choice)
-            if choice == "required":
+            if messages[-1]["role"] == "user":
                 if len(calls)>2:
                     self.assertIn("茅台", messages[-2]["content"])
                 return {"tool_calls": [planned("security_data", self.args)]}
@@ -157,6 +157,70 @@ class AssistantTests(unittest.TestCase):
         response = SimpleNamespace(headers={"Content-Type":"text/event-stream"},
                                    iter_lines=lambda: io.BytesIO(stream).read().splitlines())
         self.assertEqual(rpc_message(response,2)["result"],{})
+
+
+class SelectionTests(unittest.TestCase):
+    def setUp(self):
+        a,b,c,d="600001.SH","000001.SZ","920001.BJ","600002.SH"
+        self.store=SimpleNamespace(day="20261116",catalog={
+            code:[code, name, "stock", "", industry] for code,name,industry in
+            [(a,"甲","银行"),(b,"乙","银行"),(c,"丙","电子"),(d,"丁","银行")]})
+        self.current=[[a,9,5,0.5,8,12,2],[b,5,8,1.5,11,8,3],[c,2,7,1,14,10,4],[d,10,3,-1,12,9,4]]
+        self.fin={a:["20260930","20261020",1,10,35,40,18,15],
+                  b:["20260930","20261025",2,20,40,65,30,25],
+                  c:["20260930","20261026",1,None,45,None,70,50]}
+        index={"day":"20261113","defaultPeriod":"20260930","periods":["20260930"]}
+        data={"current":self.current,"quality":{a:["20251231","20260315",8]},
+              "fin/20260930":self.fin, "fin/latest":self.fin}
+        self.enterContext(patch("xuheng.factor_studies.edition",return_value=index))
+        self.enterContext(patch("xuheng.factor_studies.read",side_effect=lambda _,k,r:data[k]))
+
+    def test_ranking_weights_scope_paging_and_dates(self):
+        from xuheng.factor_studies import analyze
+        args={"weights":{"pb":50,"vol":50},"industry":"银行","limit":1}
+        actual=execute("rank_stocks",args,self.store,None)
+        self.assertEqual(actual["rows"][0]["证券代码"],"600001.SH")
+        self.assertEqual(actual["rows"][0]["综合分"],100)
+        self.assertIn("2026-11-13",actual["scope"])
+        self.assertIn("当日有报价 3 只，入选范围 2 只",actual["scope"])
+        second=execute("rank_stocks",{**args,"page":2},self.store,None)
+        self.assertEqual((second["rows"][0]["排名"],second["rows"][0]["证券代码"]),(2,"000001.SZ"))
+        self.assertEqual(execute("rank_stocks",{**args,"page":3},self.store,None)["rows"],[])
+        self.assertEqual(execute("rank_stocks",{**args,"venue":"BJ"},self.store,None)["rows"],[])
+        defaults=execute("rank_stocks",{},self.store,None)
+        web=analyze(self.store,{"action":"rank","weights":{"pb":40,"roe":35,"mom":25}})
+        self.assertEqual([r["证券代码"] for r in defaults["rows"]],[r[0] for r in web["rows"]])
+        self.assertEqual(next(r for r in defaults["rows"] if r["证券代码"]=="600001.SH")["年报公告日"],"2026-03-15")
+        for invalid in ({"as_of":"20240105"},{"weights":{"pb":30}},{"weights":[]},{"limit":True},{"limit":0},
+                        {"page":1.2},{"industry":"不存在的行业"}):
+            with self.subTest(invalid=invalid),self.assertRaises(ValueError):
+                execute("rank_stocks",invalid,self.store,None)
+
+    def test_financial_filters_and_missing_unused_values(self):
+        result=execute("screen_financials",{"sort":"revenue"},self.store,None)
+        self.assertEqual(result["rows"][0]["证券名称"],"丙")
+        self.assertIsNone(result["rows"][0]["资产负债率（%）"])
+        filtered=execute("screen_financials",{"min_roe":10,"max_debt":40,"period":"2026-09-30","sort":"profit"},self.store,None)
+        self.assertEqual([(r["证券代码"],r["公告日"]) for r in filtered["rows"]],[("600001.SH","2026-10-20")])
+        self.assertIn("ROE ≥ 10%",filtered["scope"])
+        self.assertEqual(execute("screen_financials",{"min_roe":100},self.store,None)["rows"],[])
+
+    def test_open_ended_recommendation_tool_loop(self):
+        from xuheng.assistant import request_answer
+        model=Mock(side_effect=[{"tool_calls":[planned("rank_stocks",{"limit":2})]},{"content":"这两只可作为研究候选。"}])
+        _,sources=request_answer("给我推荐两只 A 股",[],self.store,None,model)
+        self.assertEqual(len(sources[0]["rows"]),2)
+        sent=json.loads(model.call_args.args[0][-1]["content"])
+        self.assertEqual(sent["rows"],sources[0]["rows"])
+        self.assertIn("综合分",sent["rows"][0])
+
+    def test_general_research_discussion_without_market_lookup(self):
+        from xuheng.assistant import request_answer
+        reply="可以从估值、盈利质量和流动性三个角度比较低市净率公司的风险。"
+        model=Mock(return_value={"content":reply})
+        self.assertEqual(request_answer("低估值策略有什么盲点？",[],self.store,None,model),(reply,[]))
+        self.assertEqual(model.call_count,1)
+        self.assertEqual(model.call_args.args[2],"auto")
 
 
 if __name__ == "__main__":
