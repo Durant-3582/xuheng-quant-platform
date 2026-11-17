@@ -128,7 +128,7 @@ html{overflow-y:auto}
  .diagnosis-toggle{grid-column:2;grid-row:1}
 }
 
-.stock-grid{display:grid;grid-template-columns:minmax(0,1.65fr) minmax(275px,1fr);gap:16px;align-items:start}
+.stock-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:16px;align-items:start}
 .stock-grid>.box,.stock-pane{min-width:0}
 .stock-grid .chart{height:clamp(260px,31vw,400px)}
 .stock-grid .chart canvas{height:100%}
@@ -167,5 +167,5 @@ html{overflow-y:auto}
 .hist-col{background:var(--bar);flex:1;min-width:0}
 .hist-zero{position:absolute;inset-block:0;border-left:1px dashed #334d48;pointer-events:none}
 .hist-axis{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin:5px 0 12px}
-@media(max-width:900px){.stock-grid{grid-template-columns:1fr}.stock-grid .chart{height:280px}}
+@media(max-width:900px){.stock-grid .chart{height:280px}}
 @media(max-width:520px){.stock-tabs button{font-size:13px;padding:6px}.stock-grid .chart{height:240px}.research-readings{font-size:12px}.research-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}}
