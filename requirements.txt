@@ -3,3 +3,4 @@ numpy==2.3.5
 pandas==2.3.3
 plotly==5.24.1
 requests>=2.32.3,<3
+quickjs-ng==0.18.0.2

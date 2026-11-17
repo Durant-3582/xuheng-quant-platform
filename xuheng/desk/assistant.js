@@ -39,9 +39,9 @@ function turnView(turn) {
 
 export async function assistantPage({panel,day,current}) {
   let checked = false, loadError = "";
-  const examples = ["从全 A 股推荐 3 只值得研究的股票，说说你为什么选它们、各有什么风险。","贵州茅台最近一次收盘价是多少？",
+  const examples = ["从全 A 股推荐 3 只值得研究的股票，说说你为什么选它们、各有什么风险。","对比贵州茅台与五粮液相对沪深300的120日滚动 Beta，列出窗口和数据依据。",
     date(day)+"，沪深300收盘多少点？","最近有多少只 A 股站上了 200 日均线？"];
-  const head = title("研究问答","与 DeepSeek V4.1 Flash 讨论 A 股、筛选候选股票，也可以查看推荐依据、行情、财报和组合回测。");
+  const head = title("研究问答","与 DeepSeek V4.1 Flash 讨论 A 股，联查站内指标、财报和回测，并查看每项结论的数据依据。");
   function render(focus=false) {
     if (!current()) return;
     if (!checked || !access) {

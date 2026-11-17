@@ -34,6 +34,39 @@ SELECTION = {
     "page": {"type":"integer","minimum":1,"maximum":10001,"description":"结果页，从 1 开始。"},
 }
 TOOLS = [
+    tool("describe_site_data","发现序衡各页面的数据、列名和口径。可列出全部，或按表名查字段。跨数据集问题可先发现，再用 query_site 联查。",
+         {"tables":{"type":"array","items":field("表名"),"maxItems":30}}, []),
+    tool("query_site","自由查询序衡自己的研究数据，支持 SQLite SELECT、JOIN、GROUP BY、排序、窗口函数和样本标准差 stdev。"
+         "先用 describe_site_data 看列。stock_beta 为最新120日配对（含基准、日期、相关系数）；beta_history 为历史；"
+         "stock_study 为原网页诊断、均线、估值分位、模拟收益和一年相对判断；reports 为已披露财报。"
+         "还可查日线、指数成分、新闻、行业和全市场截面。例：tables=[stock_beta]，symbols=[贵州茅台,五粮液]，"
+         "sql=SELECT name,benchmark,day,observations,beta FROM stock_beta。输出列可用中文别名。"
+         "不指定证券可对市场截面全量统计；指定证券的表用 symbols 选取源数据。不同来源日期以证据为准。",
+         {"tables":{"type":"array","items":field("站内表名"),"maxItems":24},
+          "sql":field("一条只读 SQLite SELECT。日期列为 YYYYMMDD 文本。查询某天时以 WHERE day= 精确匹配。",maxLength=7000),
+          "symbols":{"type":"array","items":SYMBOL,"maxItems":50,"description":"个股/指数时间序列表的证券，可分批联查。"},
+          "benchmark":field("Beta/相对研究选用的市场指数名称或代码，默认沪深300。"),
+          "as_of":field("计算与财报的可得信息截止日。省略用本站最新版本。"),
+          "period":field("全市场财报截面报告期 YYYYMMDD，或 latest。")},["tables","sql"]),
+    tool("run_site_study","调用页面的因子检验（Rank IC、分组收益、因子相关）、申万行业轮动、策略回测或组合区间回测。"
+         "采用用户给出的条件，省略可选参数时说明默认值。组合支持选股模型、自选、TB/等权/手动和按交易日调仓。",
+         {"study":field("页面研究",enum=["factor_test","industry_rotation","portfolio","strategy"]),
+          "start":DAY,"end":DAY,"benchmark":SYMBOL,
+          "model":field("组合模型",enum=["mom","vol","pb","rev","multi","manual"]),
+          "symbols":{"type":"array","items":SYMBOL,"maxItems":200},
+          "weights":{"type":"object","description":"因子百分比，合计100；mom/vol/pb/roe/pe/turn。",
+                     "properties":{k:{"type":"number"} for k in FACTOR_LABELS},"additionalProperties":False},
+          "allocations":{"type":"array","items":{"type":"number"},"maxItems":200,"description":"手动持仓百分比，名单顺序或排名顺序。"},
+          "weighting":field("配权",enum=["equal","tb","manual"]),
+          "cadence":field("买入持有/交易日/按月",enum=["hold","days","months"]),
+          "interval":{"type":"integer","minimum":1,"maximum":10000},
+          "count":{"type":"integer","minimum":1,"maximum":200},
+          "timing":{"type":"boolean","description":"行业轮动是否采用沪深300的200日趋势择时。"},
+          "fee_bps":{"type":"number","description":"单边费率，基点。"},
+          "venue":field("股票市场",enum=list(VENUES)),
+          "view":field("结果类型",enum=["summary","months","annual","overlap","persistence","holdings","risk"]),
+          "page":{"type":"integer","minimum":1,"maximum":10001,"description":"明细页，从1开始，每页30行。"}},
+         ["study","start","end"]),
     tool("rank_stocks","从全市场或指定行业选股、推荐股票并比较候选。无需预先知道股票代码。"
          "可以自行设计权重，低波动、低正 PB、低正 PE 优先，动量、年报 ROE、换手按高值优先。"
          "省略权重使用网页默认的低 PB 40%、年报 ROE 35%、60 日动量 25%。",
@@ -57,8 +90,8 @@ TOOLS = [
          {"day": DAY}, []),
     tool("portfolio_backtest", "调用序衡现有组合回测。仅适用于用户明确提出的自选股票组合、区间、"
          "配权方式、调仓规则，费率单位是单边基点；参考基准可省略（默认沪深300）。"
-         "支持买入持有或每月调仓。单次问答最多12只、区间一年。缺少重要设置时先询问。",
-         {"symbols": {"type": "array", "items": SYMBOL, "maxItems": 12}, "start": DAY, "end": DAY,
+         "支持买入持有或每月调仓，区间按网站历史覆盖，自选最多200只。",
+         {"symbols": {"type": "array", "items": SYMBOL, "maxItems": 200}, "start": DAY, "end": DAY,
           "weighting": field("等权或仅做多 TB", enum=["equal", "tb"]),
           "cadence": field("期初或每月配权", enum=["hold", "months"]),
           "fee_bps": {"type": "number", "description": "单边费率（基点）"}, "benchmark": SYMBOL},
@@ -276,10 +309,8 @@ def portfolio_backtest(store, p):
     from .portfolio import run
     start, end = day(p["start"]), day(p["end"])
     codes = [resolve(store, s) for s in p["symbols"]]
-    if any(row[2] != "stock" for row in codes) or not 1 <= len(codes) <= 12:
-        raise ValueError("请明确提供 1 至 12 只自选 A 股。")
-    if (end-start).days > 366:
-        raise ValueError("问答区间回测最多覆盖一年，较长区间请使用组合表现页面。")
+    if any(row[2] != "stock" for row in codes) or not 1 <= len(codes) <= 200:
+        raise ValueError("请提供 1 至 200 只不同的自选 A 股。")
     bench = resolve(store, p.get("benchmark", "000300.SH"))[0]
     if bench not in BENCHMARKS:
         raise ValueError("请选择组合表现支持的比较基准。")
@@ -306,13 +337,28 @@ def execute(name, p, store, client):
         if schema["type"] == "string" and (not isinstance(value, str) or len(value) > schema.get("maxLength",64)):
             raise ValueError("查询字段格式无效。")
         if schema["type"] == "array" and (not isinstance(value, list) or len(value) > schema["maxItems"]):
-            raise ValueError("证券数量超出本次问答范围。")
+            raise ValueError(f"{key} 需要一个最多 {schema['maxItems']} 项的列表。")
+        if schema["type"] == "array" and schema["items"]["type"]=="string" and any(not isinstance(v,str) for v in value):
+            raise ValueError("列表需要由名称或代码组成。")
+        if schema["type"] == "array" and schema["items"]["type"]=="number" and any(type(v) not in (int,float) or not math.isfinite(v) for v in value):
+            raise ValueError("权重列表的每项须为有限数字。")
+        if schema["type"] == "boolean" and type(value) is not bool:
+            raise ValueError("开关参数应为布尔值。")
         if schema["type"] == "number" and (type(value) not in (int, float) or not math.isfinite(value)):
             raise ValueError("请输入有效的数值参数。")
         if schema["type"] == "integer" and (type(value) != int or not schema["minimum"] <= value <= schema["maximum"]):
             raise ValueError(f"{key} 须为 {schema['minimum']} 至 {schema['maximum']} 以内的整数。")
         if "enum" in schema and value not in schema["enum"]:
             raise ValueError("请选择支持的查询选项。")
+    if name == "describe_site_data":
+        from .assistant_site import catalog
+        return catalog(p.get("tables"))
+    if name == "query_site":
+        from .assistant_site import query_site
+        return query_site(store,client,p)
+    if name == "run_site_study":
+        from .assistant_studies import run_study
+        return run_study(store,p)
     if name in ("rank_stocks", "screen_financials"):
         return stock_selection(name, p, store)
     if name == "security_data":

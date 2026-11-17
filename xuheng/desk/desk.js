@@ -8,6 +8,7 @@ import {backtest} from "./backtest.js";
 import {rangeControl,bindRange} from "./ranges.js";
 import {searchField as nameInput,bindSearch} from "./search.js";
 import {rollingBeta} from "./beta.js";
+import {totalReturnCodes} from "./stock-analysis.js";
 import {stockWindows} from "./diagnosis.js";
 import {renderDiagnosis} from "./diagnosis-view.js";
 import {stockLayout,stockResearch} from "./stock-view.js";
@@ -16,9 +17,7 @@ import {factorTabs, setSingleTest, financialReports, financeLink, financialScree
 const $=id=>document.getElementById(id),P=$("panel");
 const sections=[["overview","市场总览","M3 12h4l3-6 4 12 3-7h4"],["news","新闻情绪","M4 4h16v16H4z M7 8h10 M7 12h4 M13 12h4 M7 16h10"],["indices","指数中心","M3 18h18M4 14l5-5 4 2 7-7"],["stocks","个股研究","M4 17h16M8 4v9m8-6v8M6 7h4m4 3h4"],["factors","因子选股","M3 5h18M6 11h12M9 17h6"],["backtest","策略回测","M4 18V5m0 13h17M7 14l4-5 4 2 5-7"],["portfolio","组合表现","M11 3a9 9 0 1 0 10 10H11Zm3 0v7h7a8 8 0 0 0-7-7z"]];
 sections.push(["assistant","研究问答","M3 4h18v12H9l-6 5V4z M7 8h10 M7 12h7"]);
-const benchmarks=["000001.SH","399001.SZ","000300.SH","000905.SH","000852.SH","399006.SZ","899050.BJ"];
-const totalReturnCodes={"000001.SH":"000888.SH","399001.SZ":"399002.SZ","000300.SH":"H00300.CSI",
- "000905.SH":"H00905.CSI","000852.SH":"H00852.CSI","399006.SZ":"399606.SZ","899050.BJ":"899050CNY01.CSI"};
+const benchmarks=Object.keys(totalReturnCodes);
 const venues={SSE:"沪市",SZSE:"深市",BSE:"北交所",CSI:"中证",CNI:"国证",SW:"申万",CI:"中信",CICC:"中信",OTH:"其他"};
 const sourceScopes={stock:"A 股",equity:"编制说明覆盖境内股票",benchmark:"市场基准 / 已核股票指数",industry:"行业系列",review:"样本范围待核"};
 let app,items=[],byCode=new Map(),aliases={},aliasRows=[],version=0,pageName="",routeCode="",killGraphs=new Map();

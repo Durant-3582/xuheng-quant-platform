@@ -1,4 +1,6 @@
 // All calculations use the selected security's own dated observations.
+export const totalReturnCodes={"000001.SH":"000888.SH","399001.SZ":"399002.SZ","000300.SH":"H00300.CSI",
+ "000905.SH":"H00905.CSI","000852.SH":"H00852.CSI","399006.SZ":"399606.SZ","899050.BJ":"899050CNY01.CSI"};
 const positive = n => Number.isFinite(n) && n > 0;
 const key = d => d.replaceAll("-","");
 const month = d => Number(d.slice(0,4))*12 + Number(key(d).slice(4,6))-1;
