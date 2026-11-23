@@ -100,7 +100,7 @@ class TushareMCP:
 
 def deepseek(key, messages, tools=(), choice="auto"):
     payload = {"model": MODEL, "messages": messages, "thinking": {"type": "disabled"},
-               "max_tokens": 2400, "stream": False}
+               "max_tokens": 4000, "stream": False, "tool_choice": choice}
     if tools:
         payload.update(tools=tools, tool_choice=choice)
     try:
