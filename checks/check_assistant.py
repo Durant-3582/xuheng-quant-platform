@@ -102,8 +102,9 @@ class AssistantTests(unittest.TestCase):
         state=self.unlocked({})
         with self.assertRaises(ServiceError):
             handle(STORE,body,state,"","example",password=self.password)
-        out=handle(STORE,body,state,"example","example",lambda *_:{"tool_calls":[
-            planned("security_data",{**self.args,"end":"20261114"})]},client_factory=lambda _:self.source,password=self.password)
+        model=Mock(side_effect=[{"tool_calls":[planned("security_data",{**self.args,"end":"20261114"})]},
+                                {"content":"指定日期未返回行情记录。"}])
+        out=handle(STORE,body,state,"example","example",model,client_factory=lambda _:self.source,password=self.password)
         self.assertIn("未返回", out["turn"]["answer"])
         self.assertEqual(out["turn"]["evidence"][0]["rows"],[])
         self.assertEqual(len(self.source.calls),1)

@@ -34,6 +34,13 @@ SELECTION = {
     "page": {"type":"integer","minimum":1,"maximum":10001,"description":"结果页，从 1 开始。"},
 }
 TOOLS = [
+    tool("search_web", "检索外部公开资料。优先用本站数据库和 Tushare 核对已有数据；缺少的公告、事件、业务资料或其他信息可搜索补充。"
+         "可以自主选择搜索词，优先公司、交易所、监管机构等原始来源；结果含标题、链接、发布日期和摘要。",
+         {"query": field("搜索词，支持 site: 和引号精确搜索，可拆分多次查询。", maxLength=128),
+          "count": {"type":"integer","minimum":1,"maximum":50,"description":"返回结果数，默认5。"}}, ["query"]),
+    tool("read_web", "读取外部资料原文并核对来源，可读取搜索结果或用户提供的链接。返回正文和链接；长文可指定 start 继续读取。",
+         {"url": field("完整 HTTP 或 HTTPS 网页地址，不含凭据。", maxLength=8192),
+          "start": {"type":"integer","minimum":0,"maximum":10000000,"description":"正文起始字符，默认0。"}}, ["url"]),
     tool("describe_site_data","发现序衡各页面的数据、列名和口径。可列出全部，或按表名查字段。跨数据集问题可先发现，再用 query_site 联查。",
          {"tables":{"type":"array","items":field("表名"),"maxItems":30}}, []),
     tool("query_site","自由查询序衡自己的研究数据，支持 SQLite SELECT、JOIN、GROUP BY、排序、窗口函数和样本标准差 stdev。"
@@ -328,7 +335,7 @@ def portfolio_backtest(store, p):
                     f"{rule_text} · {BENCHMARKS[bench]} · 单边 {rule.fee:g} 个基点，已计交易成本。")
 
 
-def execute(name, p, store, client):
+def execute(name, p, store, client, *, web=None):
     spec = SCHEMAS.get(name)
     if not spec or not isinstance(p, dict) or set(p) - set(spec["properties"]) or set(spec["required"]) - set(p):
         raise ValueError("查询参数不完整或当前不支持这项查询。")
@@ -350,6 +357,10 @@ def execute(name, p, store, client):
             raise ValueError(f"{key} 须为 {schema['minimum']} 至 {schema['maximum']} 以内的整数。")
         if "enum" in schema and value not in schema["enum"]:
             raise ValueError("请选择支持的查询选项。")
+    if name in ("search_web", "read_web"):
+        if web is None:
+            raise ServiceError("外部资料检索尚未连接。")
+        return web.execute(name, p)
     if name == "describe_site_data":
         from .assistant_site import catalog
         return catalog(p.get("tables"))
