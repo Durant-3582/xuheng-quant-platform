@@ -1,6 +1,6 @@
 import {api,box,date,esc,note,table,title} from "./lab.js";
 
-const call = body => api("/api/assistant", 240000, {body:JSON.stringify(body)});
+const call = body => api("/api/assistant", 360000, {body:JSON.stringify(body)});
 let turns = [], draft = "", pending = "", failure = "", retryId, ready = false;
 let access = "", challenge = "";
 
@@ -23,12 +23,22 @@ async function passwordProof(password, nonce) {
   return Array.from(new Uint8Array(signature), b=>b.toString(16).padStart(2,"0")).join("");
 }
 
-function sourceView(item) {
-  const fields = Object.keys(item.rows[0] || {});
-  const records = item.rows.map(row => fields.map(field => esc(row[field] ?? "缺失")));
+export function sourceView(item) {
+  const fields = [...new Set(item.rows.flatMap(row => Object.keys(row)))];
+  const records = item.rows.map(row => fields.map(field => field === "链接" ? sourceLink(row[field]) :
+    esc(row[field] != null && typeof row[field] === "object" ? JSON.stringify(row[field]) : row[field] ?? "缺失")));
   return '<section class="answer-source"><h3>'+esc(item.source)+' · '+esc(item.endpoint)+'</h3>'+
     '<p>'+esc(item.scope)+'</p>'+(records.length ? table(fields, records) : note("本次查询没有数据行。"))+
     (item.note ? note(item.note) : "")+'</section>';
+}
+
+export function sourceLink(value) {
+  try {
+    const url = new URL(value);
+    if (["https:","http:"].includes(url.protocol) && url.hostname && !url.username && !url.password)
+      return '<a href="'+esc(url.href)+'" target="_blank" rel="noopener noreferrer">查看原文 · '+esc(url.hostname)+'</a>';
+  } catch (_) {}
+  return esc(value ?? "缺失");
 }
 
 function turnView(turn) {
@@ -41,7 +51,7 @@ export async function assistantPage({panel,day,current}) {
   let checked = false, loadError = "";
   const examples = ["从全 A 股推荐 3 只值得研究的股票，说说你为什么选它们、各有什么风险。","对比贵州茅台与五粮液相对沪深300的120日滚动 Beta，列出窗口和数据依据。",
     date(day)+"，沪深300收盘多少点？","最近有多少只 A 股站上了 200 日均线？"];
-  const head = title("研究问答","与 DeepSeek V4.1 Flash 讨论 A 股，联查站内指标、财报和回测，并查看每项结论的数据依据。");
+  const head = title("研究问答","与 DeepSeek V4.1 Flash 讨论 A 股。优先查询本站和 Tushare，缺少的信息可检索外部资料，并查看数据依据与原文。");
   function render(focus=false) {
     if (!current()) return;
     if (!checked || !access) {
