@@ -7,6 +7,7 @@ import json
 import re
 import threading
 import time
+import unicodedata
 from zoneinfo import ZoneInfo
 
 from .assistant_access import gate
@@ -18,7 +19,8 @@ from .assistant_web import DeepSeekWeb
 _slots = threading.BoundedSemaphore(3)
 _lock = threading.Lock()
 _recent = deque()
-_protocol = re.compile(r"<\s*/?\s*[|｜]\s*(?:DSML\b|tool[▁_\s]*(?:calls|call)[▁_\s])", re.I)
+_protocol = re.compile(r"<\s*/?\s*(?:[|∣│]\s*)+(?:DSML\b|tool[▁_\s]*(?:calls?|sep)(?:\b|[▁_]))", re.I)
+_invisible = re.compile(r"[\u200b-\u200f\u202a-\u202e\u2060-\u206f\ufeff]")
 _old_answer = "这条旧回答出现了查询格式错误，未形成完整结论。原有数据依据仍可查看，请重新发送问题。"
 _system = """你是序衡的 A 股研究伙伴，使用 DeepSeek V4.1 Flash。用中文与用户讨论，可以主动给出自己的观点、推荐具体股票、质疑假设、比较策略。你自己决定研究方法和回答形式。
 即使用户只说“推荐几只股票”，也可以自行选择投资思路和标的，解释为什么选它们、什么情况会让你改变看法。可以从行业或个股逻辑出发再查财报、行情，也可以参考 rank_stocks 或 screen_financials。最终判断由你形成，可以与榜单排序不同。
@@ -52,7 +54,13 @@ def packed(value):
 
 
 def protocol_text(value):
-    return isinstance(value, str) and bool(_protocol.search(unescape(value)))
+    if not isinstance(value, str):
+        return False
+    # Providers can leak single/double pipes, fullwidth glyphs, spaces or escaped
+    # delimiters. Normalize only for detection; never alter SQL or source data.
+    decoded = unescape(unescape(value))
+    normalized = _invisible.sub("", unicodedata.normalize("NFKC", decoded))
+    return bool(_protocol.search(normalized))
 
 
 def visible_turn(turn):
