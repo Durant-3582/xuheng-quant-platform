@@ -1,0 +1,29 @@
+{
+  "blocked": [
+    "<｜DSML｜calls>",
+    "<｜｜DSML｜｜calls>",
+    "< | | DSML | | calls>",
+    "</ | | DSML | | parameter>",
+    "<||DSML||invoke name=\"query_site\">",
+    "<｜ | DSML | ｜ calls>",
+    "&lt;||DSML||calls&gt;",
+    "&amp;lt;||DSML||calls&amp;gt;",
+    "&#60;&#124;&#124;DSML&#124;&#124;calls&#62;",
+    "<​|​|​DSML​|​|​calls>",
+    "```xml\n< | | DSML | | calls>\n```",
+    "已查资料。\n<｜｜DSML｜｜invoke name=\"query_site\">",
+    "<||DSML||parameter name=\"sql\" string=\"true\">SELECT",
+    "<∣∣DSML∣∣calls>",
+    "<││DSML││calls>",
+    "<｜tool▁calls▁begin｜>",
+    "<||tool_calls_begin||>",
+    "<||tool_call_end||>"
+  ],
+  "allowed": [
+    "贵州茅台的 Beta 为 0.75，窗口为 120 个交易日。",
+    "| 股票 | 收盘价 |\n| --- | --- |\n| 甲 | 10.00 |",
+    "SQL 条件可使用 price < 10 AND pb > 0。",
+    "DSML 是工具调用格式，不是股票数据。",
+    "PE &lt; 20 且 PB &gt; 0。"
+  ]
+}

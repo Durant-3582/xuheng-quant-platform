@@ -41,8 +41,19 @@ export function sourceLink(value) {
   return esc(value ?? "缺失");
 }
 
-function turnView(turn) {
-  return '<article class="answer-turn"><h2>'+esc(turn.question)+'</h2><p class="answer-text">'+esc(turn.answer)+'</p>'+
+export function visibleAnswer(value) {
+  if (typeof value !== "string") return "未收到完整回答，请重新发送问题。";
+  // Last rendering guard, including old session responses. This never executes
+  // markup: query execution and recovery belong to the server tool-call loop.
+  const normalized = value.normalize("NFKC").replace(/[\u200b-\u200f\u202a-\u202e\u2060-\u206f\ufeff]/g, "")
+    .replace(/&(?:amp;)*(?:lt|#0*60|#x0*3c);/gi, "<")
+    .replace(/&(?:amp;)*(?:#0*124|#x0*7c|vert|VerticalLine);/gi, "|");
+  return /<\s*\/?\s*(?:[|∣│]\s*)+(?:DSML\b|tool[▁_\s]*(?:calls?|sep)(?:\b|[▁_]))/i.test(normalized)
+    ? "这条回答出现了查询格式错误，未形成完整结论。原有数据依据仍可查看，请重新发送问题。" : value;
+}
+
+export function turnView(turn) {
+  return '<article class="answer-turn"><h2>'+esc(turn.question)+'</h2><p class="answer-text">'+esc(visibleAnswer(turn.answer))+'</p>'+
     (turn.evidence.length ? '<details><summary>查看数据依据（'+turn.evidence.length+'）</summary>'+
       turn.evidence.map(sourceView).join("")+'</details>' : note("本轮未查询数据"))+'</article>';
 }
