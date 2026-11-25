@@ -7,7 +7,16 @@ const lab = (await readFile(new URL("../xuheng/desk/lab.js",import.meta.url),"ut
   .replace(/^import .*;\n/gm, "").replace(/^export \{rank\};\n/m, "");
 const source = (await readFile(new URL("../xuheng/desk/assistant.js",import.meta.url),"utf8"))
   .replace('"./lab.js"',JSON.stringify(dataUrl(lab)));
-const {sourceLink,sourceView} = await import(dataUrl(source));
+const {sourceLink,sourceView,visibleAnswer,turnView} = await import(dataUrl(source));
+const cases = JSON.parse(await readFile(new URL("./assistant_protocol_cases.json",import.meta.url),"utf8"));
+for (const text of cases.blocked) {
+  assert.notEqual(visibleAnswer(text), text);
+  const rendered = turnView({question:"继续查询",answer:text,evidence:[{
+    source:"本站数据库",endpoint:"query_site",scope:"已查询",rows:[{值:2}],note:""}]});
+  assert.ok(!rendered.includes("DSML") && !rendered.includes("tool_call"));
+  assert.ok(rendered.includes("查询格式错误") && rendered.includes("查看数据依据（1）"));
+}
+for (const text of cases.allowed) assert.equal(visibleAnswer(text),text);
 
 for (const url of ["javascript:alert(1)","data:text/html,bad","https://user:secret@example.com",null])
   assert.ok(!sourceLink(url).includes("<a "));

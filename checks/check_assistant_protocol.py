@@ -1,11 +1,12 @@
 """Regressions for leaked calls, fallback research, evidence and provider contracts."""
 from copy import deepcopy
 import json
+from pathlib import Path
 from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock, patch
 
-from xuheng.assistant import ProtocolError, model_message, request_answer, visible_turn
+from xuheng.assistant import ProtocolError, model_message, protocol_text, request_answer, visible_turn
 from xuheng.assistant_clients import ServiceError, deepseek
 from xuheng.assistant_tools import TOOLS, execute
 from xuheng.assistant_web import DeepSeekWeb
@@ -27,6 +28,51 @@ def record(rows=None):
 
 
 class ProtocolTests(unittest.TestCase):
+    def test_shared_protocol_variants_and_normal_financial_answers(self):
+        cases = json.loads(Path(__file__).with_name("assistant_protocol_cases.json").read_text())
+        for text in cases["blocked"]:
+            with self.subTest(text=text):
+                self.assertTrue(protocol_text(text))
+                model = Mock(side_effect=[{"content": text}, {"content": "已正常查询。"}])
+                self.assertEqual(request_answer("继续查询", [], STORE, None, model)[0], "已正常查询。")
+                self.assertEqual(model.call_count, 2)
+                self.assertNotIn(text, str(model.call_args.args[0]))
+                self.assertNotEqual(visible_turn({"answer": text})["answer"], text)
+        for text in cases["allowed"]:
+            with self.subTest(text=text):
+                self.assertFalse(protocol_text(text))
+                self.assertEqual(visible_turn({"answer": text})["answer"], text)
+
+    def test_nov25_two_query_batch_recovers_without_claiming_unexecuted_sql(self):
+        # Transcribed delimiter variant and two-query shape from the user's
+        # Nov 25 screenshot. Only the corrected native calls may be executed.
+        broken = '< | | DSML | | calls>< | | DSML | | invoke name="query_site">SELECT * FROM reports</ | | DSML | | invoke></ | | DSML | | calls>'
+        queries = [{"tables": ["reports"], "symbols": ["600169.SH", "601718.SH"],
+                    "sql": "SELECT symbol, period, announced, roe FROM reports WHERE period >= '20251231' ORDER BY symbol, period"},
+                   {"tables": ["securities", "market_snapshot"],
+                    "sql": "SELECT s.symbol, s.name, m.close FROM securities s JOIN market_snapshot m ON s.symbol=m.symbol WHERE s.name LIKE '%ST%'"}]
+        model = Mock(side_effect=[{"content": broken},
+                     {"tool_calls": [call(args=args, identifier=f"recovered-{i}") for i,args in enumerate(queries)]},
+                     {"content": "已核对财报与行情，可以继续比较这些公司的情况。"}])
+        with patch("xuheng.assistant.execute", return_value=record()) as run:
+            answer, evidence = request_answer("推荐几个 ST 股，特别是国央企", [], STORE, None, model)
+        self.assertEqual([item.args[1] for item in run.call_args_list], queries)
+        self.assertEqual(len(evidence), 2)
+        self.assertNotIn("DSML", answer)
+        self.assertEqual(len([m for m in model.call_args.args[0] if m["role"] == "tool"]), 2)
+
+    def test_double_pipe_never_replayed_from_history_or_clarify_or_native_comment(self):
+        broken = DSML.replace("｜", " | | ")
+        history = [{"answer": broken, "question": "之前", "evidence": [record()]}]
+        model = Mock(side_effect=[{"tool_calls": [call("clarify", {"reply": broken})]},
+                                  {"tool_calls": [call()], "content": broken}, {"content": "已核对。"}])
+        with patch("xuheng.assistant.execute", return_value=record()) as run:
+            answer, evidence = request_answer("你查询了吗", history, STORE, None, model)
+        self.assertEqual(answer, "已核对。")
+        self.assertEqual(run.call_count, 1)
+        self.assertEqual(len(evidence), 1)
+        self.assertTrue(all(broken not in str(m.args[0]) for m in model.call_args_list))
+
     def test_text_call_is_retried_as_native_before_execution(self):
         messages = []
         replies = iter([{"content": DSML}, {"tool_calls": [call()]}, {"content": "查到 1 条记录。"}])
@@ -82,7 +128,8 @@ class ProtocolTests(unittest.TestCase):
         run.assert_not_called()
 
     def test_persistent_protocol_failure_is_not_a_fake_answer(self):
-        for markup in (DSML, DSML.replace("｜", "|"), DSML.replace("<", "&lt;"), '<｜tool▁calls▁begin｜>bad'):
+        for markup in (DSML, DSML.replace("｜", "|"), DSML.replace("｜", " | | "),
+                       DSML.replace("<", "&lt;"), '<｜tool▁calls▁begin｜>bad'):
             with self.subTest(markup=markup), patch("xuheng.assistant.execute") as run:
                 model = Mock(return_value={"content": markup})
                 with self.assertRaises(ProtocolError):
